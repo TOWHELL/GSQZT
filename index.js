@@ -1,0 +1,32 @@
+const http=require("http"),fs=require("fs"),path=require("path"),crypto=require("crypto");
+const envPath=path.join(__dirname,".env");
+if(fs.existsSync(envPath)){for(const line of fs.readFileSync(envPath,"utf8").split(/\\r?\\n/)){const m=line.match(/^\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*(.*?)\\s*$/);if(m&&!process.env[m[1]])process.env[m[1]]=m[2].replace(/^["']|["']$/g,"")}}
+const root=path.join(__dirname,".."),dbfile=path.join(__dirname,"data.json"),port=process.env.PORT||3000,secret=process.env.JWT_SECRET;
+if(!secret||secret.length<32){console.error("Создай server/.env с JWT_SECRET длиной не менее 32 символов");process.exit(1)}
+const seeds=[
+{id:1,title:"Ночной город",artist:"MIRA",type:"Альбом",year:2026,tag:"NEW",art:"M",cover:"linear-gradient(135deg,#f15d52,#662d75)",description:"Синтезаторы, ночные маршруты и честные тексты.",score:8.7},
+{id:2,title:"Пыль на виниле",artist:"KOSMO",type:"Альбом",year:2026,tag:"TOP",art:"K",cover:"linear-gradient(145deg,#e5a34b,#9a432c)",description:"Тёплый звук и меланхоличная электроника.",score:9.1},
+{id:3,title:"Без адреса",artist:"СЕВЕР",type:"Сингл",year:2026,tag:"SINGLE",art:"С",cover:"linear-gradient(135deg,#8cacc5,#243c59)",description:"Минималистичная история о поиске себя.",score:8.2},
+{id:4,title:"Параллели",artist:"LILAC",type:"Альбом",year:2025,tag:"EDITOR'S",art:"L",cover:"linear-gradient(135deg,#b9c4a1,#607c66)",description:"Мягкая психоделия и воздушный вокал.",score:9.4}];
+let db=fs.existsSync(dbfile)?JSON.parse(fs.readFileSync(dbfile)): {users:[],releases:seeds,ratings:[],reviews:[]};function save(){fs.writeFileSync(dbfile,JSON.stringify(db,null,2))}
+const json=(res,status,obj)=>{res.writeHead(status,{"Content-Type":"application/json; charset=utf-8","Access-Control-Allow-Origin":"*"});res.end(JSON.stringify(obj))};
+function token(u){let p=Buffer.from(JSON.stringify({id:u.id,exp:Date.now()+7*864e5})).toString("base64url"),sig=crypto.createHmac("sha256",secret).update(p).digest("base64url");return p+"."+sig}
+function userFrom(req){try{let t=(req.headers.authorization||"").replace(/^Bearer /,"").split("."),sig=crypto.createHmac("sha256",secret).update(t[0]).digest("base64url");if(sig!==t[1])return null;let p=JSON.parse(Buffer.from(t[0],"base64url"));return p.exp>Date.now()?db.users.find(u=>u.id===p.id):null}catch{return null}}
+function read(req){return new Promise(resolve=>{let s="";req.on("data",c=>{s+=c;if(s.length>30000)req.destroy()});req.on("end",()=>{try{resolve(JSON.parse(s||"{}"))}catch{resolve({})}})})}
+const hash=(p,s)=>crypto.scryptSync(p,s,64).toString("hex");
+const safe=u=>({id:u.id,username:u.username,email:u.email});
+function releaseList(){return db.releases.map(r=>({...r,score:db.ratings.filter(x=>x.releaseId===r.id).length?Number((db.ratings.filter(x=>x.releaseId===r.id).reduce((a,x)=>a+x.score,0)/db.ratings.filter(x=>x.releaseId===r.id).length).toFixed(1)):r.score}))}
+const server=http.createServer(async(req,res)=>{let url=new URL(req.url,"http://localhost"),p=url.pathname,method=req.method;
+if(method==="OPTIONS"){res.writeHead(204,{"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"Content-Type,Authorization","Access-Control-Allow-Methods":"GET,POST,OPTIONS"});return res.end()}
+if(p.startsWith("/api/")){let body=await read(req),u=userFrom(req);
+if(p==="/api/health")return json(res,200,{ok:true});
+if(p==="/api/auth/register"&&method==="POST"){let {username,email,password}=body;username=String(username||"").trim();email=String(email||"").trim().toLowerCase();password=String(password||"");if(username.length<3||username.length>24||! /^[\p{L}\p{N}_.-]+$/u.test(username))return json(res,400,{error:"Ник: 3–24 символа"});if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||password.length<8||password.length>72)return json(res,400,{error:"Проверь email и пароль (8–72 символа)"});if(db.users.some(x=>x.email===email||x.username.toLowerCase()===username.toLowerCase()))return json(res,409,{error:"Ник или email уже занят"});let salt=crypto.randomBytes(16).toString("hex"),x={id:Date.now()+Math.random(),username,email,salt,pass:hash(password,salt)};db.users.push(x);save();return json(res,201,{token:token(x),user:safe(x)})}
+if(p==="/api/auth/login"&&method==="POST"){let id=String(body.identity||"").toLowerCase(),x=db.users.find(x=>x.email===id||x.username.toLowerCase()===id);if(!x||hash(String(body.password||""),x.salt)!==x.pass)return json(res,401,{error:"Неверный логин или пароль"});return json(res,200,{token:token(x),user:safe(x)})}
+if(p==="/api/me"&&method==="GET")return u?json(res,200,{user:safe(u)}):json(res,401,{error:"Войдите в аккаунт"});
+if(p==="/api/releases"&&method==="GET")return json(res,200,{releases:releaseList()});
+if(p==="/api/reviews"&&method==="GET")return json(res,200,{reviews:db.reviews.slice().reverse()});
+if(p.startsWith("/api/releases/")&&p.endsWith("/rating")&&method==="POST"){if(!u)return json(res,401,{error:"Войдите, чтобы оценивать"});let id=Number(p.split("/")[3]),score=Number(body.score);if(!db.releases.some(x=>x.id===id)||!Number.isInteger(score)||score<1||score>10)return json(res,400,{error:"Проверь релиз и оценку 1–10"});let old=db.ratings.find(x=>x.userId===u.id&&x.releaseId===id);if(old)old.score=score;else db.ratings.push({userId:u.id,releaseId:id,score});save();return json(res,200,{ok:true})}
+if(p==="/api/reviews"&&method==="POST"){if(!u)return json(res,401,{error:"Войдите, чтобы писать рецензии"});let id=Number(body.releaseId),score=Number(body.score),text=String(body.body||"").trim(),r=db.releases.find(x=>x.id===id);if(!r||!Number.isInteger(score)||score<1||score>10||text.length<20||text.length>5000)return json(res,400,{error:"Проверь релиз, оценку и длину текста (20–5000)"});db.reviews.push({id:Date.now(),username:u.username,release:r.title,artist:r.artist,score,body:text,created_at:new Date().toISOString()});save();return json(res,201,{ok:true})}
+return json(res,404,{error:"API endpoint not found"})}
+let file=p==="/"?"index.html":decodeURIComponent(p.slice(1)),full=path.resolve(root,file);if(full.startsWith(path.join(root,"server")+path.sep)||!full.startsWith(root+path.sep))return json(res,403,{error:"Forbidden"});fs.readFile(full,(err,data)=>{if(err){res.writeHead(404);return res.end("Not found")}let ext=path.extname(full),types={".html":"text/html; charset=utf-8",".css":"text/css; charset=utf-8",".js":"text/javascript; charset=utf-8"};res.writeHead(200,{"Content-Type":types[ext]||"application/octet-stream"});res.end(data)})});
+server.listen(port,()=>console.log("GSQZT running: http://localhost:"+port));
