@@ -24,11 +24,11 @@ CREATE TABLE IF NOT EXISTS ratings (
   user_id TEXT NOT NULL REFERENCES users(id),
   release_id INTEGER NOT NULL REFERENCES releases(id),
   score INTEGER NOT NULL CHECK(score BETWEEN 0 AND 90),
-  sound INTEGER CHECK(sound BETWEEN 0 AND 18),
-  composition INTEGER CHECK(composition BETWEEN 0 AND 18),
-  lyrics INTEGER CHECK(lyrics BETWEEN 0 AND 18),
-  originality INTEGER CHECK(originality BETWEEN 0 AND 18),
-  atmosphere INTEGER CHECK(atmosphere BETWEEN 0 AND 18),
+  sound INTEGER CHECK(sound BETWEEN 0 AND 10),
+  composition INTEGER CHECK(composition BETWEEN 0 AND 10),
+  lyrics INTEGER CHECK(lyrics BETWEEN 0 AND 10),
+  originality INTEGER CHECK(originality BETWEEN 0 AND 10),
+  atmosphere INTEGER CHECK(atmosphere BETWEEN 0 AND 10),
   PRIMARY KEY (user_id, release_id)
 );
 
@@ -43,11 +43,11 @@ CREATE TABLE IF NOT EXISTS reviews (
   title TEXT NOT NULL DEFAULT '',
   pros TEXT NOT NULL DEFAULT '',
   cons TEXT NOT NULL DEFAULT '',
-  sound INTEGER CHECK(sound BETWEEN 0 AND 18),
-  composition INTEGER CHECK(composition BETWEEN 0 AND 18),
-  lyrics INTEGER CHECK(lyrics BETWEEN 0 AND 18),
-  originality INTEGER CHECK(originality BETWEEN 0 AND 18),
-  atmosphere INTEGER CHECK(atmosphere BETWEEN 0 AND 18),
+  sound INTEGER CHECK(sound BETWEEN 0 AND 10),
+  composition INTEGER CHECK(composition BETWEEN 0 AND 10),
+  lyrics INTEGER CHECK(lyrics BETWEEN 0 AND 10),
+  originality INTEGER CHECK(originality BETWEEN 0 AND 10),
+  atmosphere INTEGER CHECK(atmosphere BETWEEN 0 AND 10),
   created_at TEXT NOT NULL
 );
 
