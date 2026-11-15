@@ -266,13 +266,33 @@ export async function onRequest(context) {
 
     await db.prepare("CREATE TABLE IF NOT EXISTS review_likes (user_id TEXT NOT NULL REFERENCES users(id), review_id TEXT NOT NULL REFERENCES reviews(id) ON DELETE CASCADE, created_at TEXT NOT NULL, PRIMARY KEY(user_id,review_id))").run();
     await db.prepare("CREATE TABLE IF NOT EXISTS review_comments (id TEXT PRIMARY KEY, review_id TEXT NOT NULL REFERENCES reviews(id) ON DELETE CASCADE, user_id TEXT NOT NULL REFERENCES users(id), username TEXT NOT NULL, body TEXT NOT NULL, created_at TEXT NOT NULL)").run();
+    await db.prepare("CREATE TABLE IF NOT EXISTS notifications (id TEXT PRIMARY KEY, recipient_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, actor_user_id TEXT, actor_username TEXT NOT NULL, type TEXT NOT NULL, review_id TEXT NOT NULL REFERENCES reviews(id) ON DELETE CASCADE, created_at TEXT NOT NULL, read_at TEXT)").run();
 
+    if (path === "/api/notifications" && method === "GET") {
+      if (!user) return json({ error: "Войдите, чтобы смотреть уведомления" }, 401);
+      const rows = await db.prepare("SELECT n.id,n.type,n.actor_username,n.review_id,n.created_at,n.read_at,rv.title,rv.release_title,rv.artist FROM notifications n JOIN reviews rv ON rv.id=n.review_id WHERE n.recipient_user_id=? ORDER BY n.created_at DESC LIMIT 100").bind(user.id).all();
+      const unread = await db.prepare("SELECT COUNT(*) AS count FROM notifications WHERE recipient_user_id=? AND read_at IS NULL").bind(user.id).first();
+      return json({ notifications: rows.results || [], unread_count: unread?.count || 0 });
+    }
+    const notificationReadMatch = path.match(/^\/api\/notifications\/([a-f0-9-]+)\/read$/i);
+    if (notificationReadMatch && method === "PATCH") {
+      if (!user) return json({ error: "Войдите в аккаунт" }, 401);
+      await db.prepare("UPDATE notifications SET read_at=COALESCE(read_at,?) WHERE id=? AND recipient_user_id=?").bind(new Date().toISOString(),notificationReadMatch[1],user.id).run();
+      return json({ ok: true });
+    }
+    if (path === "/api/notifications/read-all" && method === "PATCH") {
+      if (!user) return json({ error: "Войдите в аккаунт" }, 401);
+      await db.prepare("UPDATE notifications SET read_at=? WHERE recipient_user_id=? AND read_at IS NULL").bind(new Date().toISOString(),user.id).run();
+      return json({ ok: true });
+    }
     const reviewLikeMatch = path.match(/^\/api\/reviews\/([a-f0-9-]+)\/like$/i);
     if (reviewLikeMatch && method === "POST") {
       if (!user) return json({ error: "Войдите, чтобы лайкать рецензии" }, 401);
       const exists = await db.prepare("SELECT id FROM reviews WHERE id=?").bind(reviewLikeMatch[1]).first();
       if (!exists) return json({ error: "Рецензия не найдена" }, 404);
-      await db.prepare("INSERT OR IGNORE INTO review_likes (user_id,review_id,created_at) VALUES (?,?,?)").bind(user.id,reviewLikeMatch[1],new Date().toISOString()).run();
+      const reviewOwner = await db.prepare("SELECT user_id FROM reviews WHERE id=?").bind(reviewLikeMatch[1]).first();
+      const liked = await db.prepare("INSERT OR IGNORE INTO review_likes (user_id,review_id,created_at) VALUES (?,?,?)").bind(user.id,reviewLikeMatch[1],new Date().toISOString()).run();
+      if (liked.meta?.changes && reviewOwner?.user_id !== user.id) await db.prepare("INSERT INTO notifications (id,recipient_user_id,actor_user_id,actor_username,type,review_id,created_at) VALUES (?,?,?,?,?,?,?)").bind(crypto.randomUUID(),reviewOwner.user_id,user.id,user.username,"like",reviewLikeMatch[1],new Date().toISOString()).run();
       return json({ ok: true });
     }
     if (reviewLikeMatch && method === "DELETE") {
@@ -296,8 +316,10 @@ export async function onRequest(context) {
       if (!reviewExists) return json({ error: "Рецензия не найдена" }, 404);
       if (!bodyText || bodyText.length > 1000) return json({ error: "Комментарий должен содержать от 1 до 1000 символов" }, 400);
       const id = crypto.randomUUID();
+      const reviewOwner = await db.prepare("SELECT user_id FROM reviews WHERE id=?").bind(reviewCommentsMatch[1]).first();
       await db.prepare("INSERT INTO review_comments (id,review_id,user_id,username,body,created_at) VALUES (?,?,?,?,?,?)")
         .bind(id,reviewCommentsMatch[1],user.id,user.username,bodyText,new Date().toISOString()).run();
+      if (reviewOwner?.user_id !== user.id) await db.prepare("INSERT INTO notifications (id,recipient_user_id,actor_user_id,actor_username,type,review_id,created_at) VALUES (?,?,?,?,?,?,?)").bind(crypto.randomUUID(),reviewOwner.user_id,user.id,user.username,"comment",reviewCommentsMatch[1],new Date().toISOString()).run();
       return json({ ok: true, id }, 201);
     }
     const commentDeleteMatch = path.match(/^\/api\/reviews\/([a-f0-9-]+)\/comments\/([a-f0-9-]+)$/i);
