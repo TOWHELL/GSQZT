@@ -348,6 +348,39 @@ export async function onRequest(context) {
       const rows = await db.prepare("SELECT id,title,artist,type,year,genre,status,created_at,rejection_reason FROM release_submissions WHERE submitter_user_id = ? ORDER BY created_at DESC").bind(user.id).all();
       return json({ submissions: rows.results || [] });
     }
+    if (path === "/api/admin/users" && method === "GET") {
+      if (!isAdmin(user)) return json({ error: "Доступ только для администратора TOWHELL" }, 403);
+      const rows = await db.prepare(`
+        SELECT u.id,u.username,u.email,u.created_at,
+          (SELECT COUNT(*) FROM reviews rv WHERE rv.user_id=u.id) AS reviews_count,
+          (SELECT COUNT(*) FROM ratings rt WHERE rt.user_id=u.id) AS ratings_count
+        FROM users u ORDER BY u.created_at DESC
+      `).all();
+      return json({ users: rows.results || [] });
+    }
+
+    const deleteUserMatch = path.match(/^\/api\/admin\/users\/([^/]+)$/);
+    if (deleteUserMatch && method === "DELETE") {
+      if (!isAdmin(user)) return json({ error: "Доступ только для администратора TOWHELL" }, 403);
+      const targetId = decodeURIComponent(deleteUserMatch[1]);
+      const target = await db.prepare("SELECT id,username FROM users WHERE id=?").bind(targetId).first();
+      if (!target) return json({ error: "Пользователь не найден" }, 404);
+      if (target.username.toLowerCase() === "towhell" || target.id === user.id)
+        return json({ error: "Нельзя удалить аккаунт администратора" }, 403);
+      await db.batch([
+        db.prepare("DELETE FROM review_comments WHERE review_id IN (SELECT id FROM reviews WHERE user_id=?)").bind(targetId),
+        db.prepare("DELETE FROM review_comments WHERE user_id=?").bind(targetId),
+        db.prepare("DELETE FROM review_likes WHERE review_id IN (SELECT id FROM reviews WHERE user_id=?)").bind(targetId),
+        db.prepare("DELETE FROM review_likes WHERE user_id=?").bind(targetId),
+        db.prepare("DELETE FROM reviews WHERE user_id=?").bind(targetId),
+        db.prepare("DELETE FROM ratings WHERE user_id=?").bind(targetId),
+        db.prepare("DELETE FROM favorites WHERE user_id=?").bind(targetId),
+        db.prepare("DELETE FROM release_submissions WHERE submitter_user_id=?").bind(targetId),
+        db.prepare("DELETE FROM users WHERE id=?").bind(targetId)
+      ]);
+      return json({ ok: true, username: target.username });
+    }
+
     if (path === "/api/admin/submissions" && method === "GET") {
       if (!isAdmin(user)) return json({ error: "Доступ только для администратора TOWHELL" }, 403);
       const rows = await db.prepare("SELECT s.*, u.username AS submitter FROM release_submissions s JOIN users u ON u.id=s.submitter_user_id WHERE s.status='pending' ORDER BY s.created_at ASC").all();
