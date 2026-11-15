@@ -17,7 +17,8 @@ CREATE TABLE IF NOT EXISTS releases (
   art TEXT NOT NULL,
   cover TEXT NOT NULL,
   description TEXT NOT NULL,
-  score REAL NOT NULL
+  score REAL NOT NULL,
+  genre TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS ratings (
