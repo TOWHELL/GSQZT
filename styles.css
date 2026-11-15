@@ -44,3 +44,5 @@
 .criterion{margin:10px 0}.criterion input{max-width:130px}.form-intro{line-height:1.6;color:var(--muted)}.dialog h3{font-size:14px;margin:24px 0 10px}
 
 .admin-item{grid-template-columns:minmax(0,1fr) auto;align-items:center}.danger{background:transparent;border:1px solid #a64b4b;color:#ff8a8a;padding:10px 14px;font-size:11px}.danger:hover{background:#4a2222}@media(max-width:650px){.admin-item{grid-template-columns:1fr}}
+
+.search-panel{margin:28px 0 12px;padding:22px;background:var(--panel);border:1px solid var(--line)}.search-panel input{width:100%;background:#111114;border:1px solid #45454d;color:var(--white);padding:17px 18px;font:inherit;font-size:15px;outline:none}.search-panel input:focus{border-color:var(--acid)}.search-hint,.search-empty{color:var(--muted);font-size:12px;line-height:1.7}.search-empty{padding:18px 0}.search-panel .search-hint{margin:10px 0 0}@media(max-width:650px){.search-panel{padding:14px}.search-panel input{font-size:13px}}
