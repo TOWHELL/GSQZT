@@ -312,3 +312,21 @@
   font-size:11px;
   line-height:1.55;
 }
+
+
+/* Icon-only rated marker */
+.card .rated-label{
+  display:inline-grid;
+  place-items:center;
+  width:30px;
+  height:30px;
+  margin:10px 0 8px;
+  padding:0;
+  border:1px solid var(--acid);
+  border-radius:50%;
+  background:rgba(212,250,69,.12);
+  color:var(--acid);
+  font:800 16px/1 Manrope,sans-serif;
+  box-shadow:0 0 14px rgba(212,250,69,.12);
+}
+.card .rated-label::before{content:none;display:none}
