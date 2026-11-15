@@ -82,3 +82,39 @@
  #charts .chartrow> b:first-child,.leader-place{width:27px;height:29px;font-size:11px}
  #charts .chartrow .score,#charts .leader-row>.score{font-size:12px;padding:7px 6px}
 }
+
+
+/* Align rank and score columns consistently */
+#charts .chartrow{
+  grid-template-columns:38px 58px minmax(0,1fr) 92px;
+}
+#charts .leader-row{
+  grid-template-columns:38px minmax(0,1fr) 92px;
+}
+#charts .chartrow> b:first-child,
+#charts .leader-row .leader-place{
+  width:34px;
+  min-width:34px;
+  justify-self:start;
+  text-align:center;
+  font-variant-numeric:tabular-nums;
+  font-feature-settings:"tnum";
+}
+#charts .chartrow>.score,
+#charts .leader-row>.score{
+  width:92px;
+  min-width:92px;
+  justify-self:end;
+  text-align:center;
+  white-space:nowrap;
+  font-variant-numeric:tabular-nums;
+  font-feature-settings:"tnum";
+}
+@media(max-width:650px){
+  #charts .chartrow{grid-template-columns:30px 48px minmax(0,1fr) 76px}
+  #charts .leader-row{grid-template-columns:30px minmax(0,1fr) 76px}
+  #charts .chartrow> b:first-child,
+  #charts .leader-row .leader-place{width:27px;min-width:27px}
+  #charts .chartrow>.score,
+  #charts .leader-row>.score{width:76px;min-width:76px;padding:7px 4px}
+}
