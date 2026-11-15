@@ -320,6 +320,39 @@ export async function onRequest(context) {
       return json({ ok: true });
     }
 
+    if (path === "/api/reports" && method === "POST") {
+      if (!user) return json({ error: "Войдите, чтобы отправить жалобу" }, 401);
+      const targetType = String(body.targetType || "");
+      const targetId = String(body.targetId || "");
+      const reason = String(body.reason || "").trim();
+      if (!["review","comment"].includes(targetType) || !targetId || !reason || reason.length > 1000) return json({ error: "Укажи причину жалобы (до 1000 символов)" }, 400);
+      const target = targetType === "review" ? await db.prepare("SELECT user_id FROM reviews WHERE id=?").bind(targetId).first() : await db.prepare("SELECT user_id FROM review_comments WHERE id=?").bind(targetId).first();
+      if (!target) return json({ error: "Материал не найден" }, 404);
+      if (target.user_id === user.id) return json({ error: "Нельзя пожаловаться на собственный материал" }, 400);
+      try {
+        const id = crypto.randomUUID();
+        await db.prepare("INSERT INTO content_reports (id,reporter_user_id,target_type,target_id,reason,status,created_at) VALUES (?,?,?,?,?,'pending',?)").bind(id,user.id,targetType,targetId,reason,new Date().toISOString()).run();
+        return json({ ok: true, id }, 201);
+      } catch (error) {
+        if (String(error?.message || error).toLowerCase().includes("unique")) return json({ error: "Ты уже отправлял жалобу на этот материал" }, 409);
+        throw error;
+      }
+    }
+    if (path === "/api/admin/reports" && method === "GET") {
+      if (!isAdmin(user)) return json({ error: "Доступ только для администратора TOWHELL" }, 403);
+      const rows = await db.prepare("SELECT cr.id,cr.target_type,cr.target_id,cr.reason,cr.status,cr.created_at,u.username AS reporter,CASE WHEN cr.target_type='review' THEN rv.username ELSE cm.username END AS target_author,CASE WHEN cr.target_type='review' THEN rv.release_title || ' — ' || rv.artist ELSE 'Комментарий к рецензии' END AS target_label,CASE WHEN cr.target_type='review' THEN rv.body ELSE cm.body END AS target_body FROM content_reports cr JOIN users u ON u.id=cr.reporter_user_id LEFT JOIN reviews rv ON cr.target_type='review' AND rv.id=cr.target_id LEFT JOIN review_comments cm ON cr.target_type='comment' AND cm.id=cr.target_id ORDER BY CASE cr.status WHEN 'pending' THEN 0 ELSE 1 END,cr.created_at DESC").all();
+      return json({ reports: rows.results || [] });
+    }
+    const reportStatusMatch = path.match(/^\/api\/admin\/reports\/([a-f0-9-]+)$/i);
+    if (reportStatusMatch && method === "PATCH") {
+      if (!isAdmin(user)) return json({ error: "Доступ только для администратора TOWHELL" }, 403);
+      const status = String(body.status || "");
+      if (!["resolved","dismissed","pending"].includes(status)) return json({ error: "Некорректный статус жалобы" }, 400);
+      const result = await db.prepare("UPDATE content_reports SET status=?,reviewed_at=?,reviewed_by=? WHERE id=?").bind(status,status === "pending" ? null : new Date().toISOString(),status === "pending" ? null : user.id,reportStatusMatch[1]).run();
+      if (!result.meta || result.meta.changes === 0) return json({ error: "Жалоба не найдена" }, 404);
+      return json({ ok: true });
+    }
+
     const reviewCommentsMatch = path.match(/^\/api\/reviews\/([a-f0-9-]+)\/comments$/i);
     if (reviewCommentsMatch && method === "GET") {
       const reviewExists = await db.prepare("SELECT id FROM reviews WHERE id=?").bind(reviewCommentsMatch[1]).first();
