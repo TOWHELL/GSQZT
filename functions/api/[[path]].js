@@ -214,7 +214,7 @@ export async function onRequest(context) {
       const rows = await db.prepare("SELECT release_id FROM favorites WHERE user_id=? ORDER BY created_at DESC").bind(user.id).all();
       return json({ favorites: (rows.results || []).map(x => x.release_id) });
     }
-    const favoriteMatch = path.match(/^\\/api\\/favorites\\/(\\d+)$/);
+    const favoriteMatch = path.match(/^\/api\/favorites\/(\d+)$/);
     if (favoriteMatch && method === "POST") {
       if (!user) return json({ error: "Войдите, чтобы добавлять в избранное" }, 401);
       const releaseId = Number(favoriteMatch[1]);
