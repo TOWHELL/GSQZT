@@ -40,3 +40,5 @@
 #pendingSubmissions button.lime{background:var(--acid);color:#171719;border-color:var(--acid)}
 #mySubmissions .review{grid-template-columns:minmax(0,1fr) auto;align-items:center}
 @media(max-width:650px){.form-pair{grid-template-columns:1fr;gap:0}header{overflow-x:auto}nav{flex:0 0 auto}#pendingSubmissions .review{grid-template-columns:1fr}}
+
+.criterion{margin:10px 0}.criterion input{max-width:130px}.form-intro{line-height:1.6;color:var(--muted)}.dialog h3{font-size:14px;margin:24px 0 10px}
