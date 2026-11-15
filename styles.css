@@ -122,3 +122,4 @@
 
 /* Hide score badge on cover thumbnails inside Top charts */
 #charts .chartrow .cover>b{display:none}
+\n/* Favorites */\n.card{position:relative}.favorite-toggle{position:absolute;z-index:2;top:10px;right:10px;width:34px;height:34px;border:1px solid #ffffff35;border-radius:50%;background:#111d;color:#fff;font-size:21px;line-height:1;cursor:pointer}.favorite-toggle:hover,.favorite-toggle.is-favorite{color:var(--acid);border-color:var(--acid);background:#171a10}\n
