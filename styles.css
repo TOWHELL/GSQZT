@@ -154,3 +154,5 @@
 .avatar-upload{display:inline-flex;align-items:center;gap:8px;background:var(--acid);color:#171719;padding:10px 13px;font-size:11px;font-weight:800;cursor:pointer;margin:8px 10px 8px 0}
 .avatar-upload input{display:none}
 @media(max-width:520px){.profile-avatar{width:82px;height:82px;font-size:30px}.profile-head{gap:14px}}
+
+.listen-link{display:inline-flex;align-items:center;gap:6px;margin-top:9px;padding:7px 11px;border:1px solid #59612f;border-radius:7px;color:var(--acid);font-size:11px;font-weight:800;text-decoration:none;transition:background .18s ease,border-color .18s ease}.listen-link:hover{background:#d4fa4518;border-color:var(--acid)}.chartrow .listen-link{margin-top:7px}
