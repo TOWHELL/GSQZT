@@ -95,6 +95,21 @@ async function ensureRatingColumns(db) {
     if (!existingReviews.has(name)) await db.prepare(`ALTER TABLE reviews ADD COLUMN ${name} ${definition}`).run();
   }
 }
+async function ensureScoreScale(db) {
+  await db.prepare("CREATE TABLE IF NOT EXISTS gsqzt_migrations (id TEXT PRIMARY KEY)").run();
+  const done = await db.prepare("SELECT id FROM gsqzt_migrations WHERE id = ?").bind("score-scale-90-v1").first();
+  if (done) return;
+  await db.prepare("CREATE TABLE IF NOT EXISTS ratings_v2 (user_id TEXT NOT NULL REFERENCES users(id), release_id INTEGER NOT NULL REFERENCES releases(id), score INTEGER NOT NULL CHECK(score BETWEEN 0 AND 90), sound INTEGER, composition INTEGER, lyrics INTEGER, originality INTEGER, atmosphere INTEGER, PRIMARY KEY(user_id,release_id))").run();
+  await db.prepare("INSERT OR IGNORE INTO ratings_v2 SELECT user_id,release_id,MIN(90,MAX(0,ROUND(score*9))),CASE WHEN sound IS NULL THEN NULL ELSE MIN(18,MAX(0,ROUND(sound*1.8))) END,CASE WHEN composition IS NULL THEN NULL ELSE MIN(18,MAX(0,ROUND(composition*1.8))) END,CASE WHEN lyrics IS NULL THEN NULL ELSE MIN(18,MAX(0,ROUND(lyrics*1.8))) END,CASE WHEN originality IS NULL THEN NULL ELSE MIN(18,MAX(0,ROUND(originality*1.8))) END,CASE WHEN atmosphere IS NULL THEN NULL ELSE MIN(18,MAX(0,ROUND(atmosphere*1.8))) END FROM ratings").run();
+  await db.prepare("DROP TABLE ratings").run();
+  await db.prepare("ALTER TABLE ratings_v2 RENAME TO ratings").run();
+  await db.prepare("CREATE TABLE IF NOT EXISTS reviews_v2 (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), username TEXT NOT NULL, release_title TEXT NOT NULL, artist TEXT NOT NULL, score INTEGER NOT NULL CHECK(score BETWEEN 0 AND 90), body TEXT NOT NULL, created_at TEXT NOT NULL, title TEXT NOT NULL DEFAULT '', pros TEXT NOT NULL DEFAULT '', cons TEXT NOT NULL DEFAULT '', sound INTEGER, composition INTEGER, lyrics INTEGER, originality INTEGER, atmosphere INTEGER)").run();
+  await db.prepare("INSERT OR IGNORE INTO reviews_v2 SELECT id,user_id,username,release_title,artist,MIN(90,MAX(0,ROUND(score*9))),body,created_at,title,pros,cons,CASE WHEN sound IS NULL THEN NULL ELSE MIN(18,MAX(0,ROUND(sound*1.8))) END,CASE WHEN composition IS NULL THEN NULL ELSE MIN(18,MAX(0,ROUND(composition*1.8))) END,CASE WHEN lyrics IS NULL THEN NULL ELSE MIN(18,MAX(0,ROUND(lyrics*1.8))) END,CASE WHEN originality IS NULL THEN NULL ELSE MIN(18,MAX(0,ROUND(originality*1.8))) END,CASE WHEN atmosphere IS NULL THEN NULL ELSE MIN(18,MAX(0,ROUND(atmosphere*1.8))) END FROM reviews").run();
+  await db.prepare("DROP TABLE reviews").run();
+  await db.prepare("ALTER TABLE reviews_v2 RENAME TO reviews").run();
+  await db.prepare("UPDATE releases SET score=MIN(90,MAX(0,ROUND(score*9,1))) WHERE score > 0 AND score <= 10").run();
+  await db.prepare("INSERT INTO gsqzt_migrations (id) VALUES (?)").bind("score-scale-90-v1").run();
+}
 async function ensureSubmissionTables(db) {
   await db.prepare(`
     CREATE TABLE IF NOT EXISTS release_submissions (
@@ -122,6 +137,7 @@ export async function onRequest(context) {
     await ensureSeeds(db);
     await ensureSubmissionTables(db);
     await ensureRatingColumns(db);
+    await ensureScoreScale(db);
     if (method === "OPTIONS") return new Response(null, { status: 204 });
     const body = method === "POST" ? await readBody(request) : {};
     const user = await getUser(request, db, env.JWT_SECRET);
@@ -237,8 +253,8 @@ export async function onRequest(context) {
       if (!user) return json({ error: "Войдите, чтобы оценивать" }, 401);
       const releaseId = Number(ratingMatch[1]);
       const criteria = ["sound","composition","lyrics","originality","atmosphere"].map(k => Number(body[k]));
-      if (criteria.some(v => !Number.isInteger(v) || v < 1 || v > 10)) return json({ error: "Каждый критерий должен быть от 1 до 10" }, 400);
-      const score = Math.round(criteria.reduce((sum,v)=>sum+v,0)/criteria.length*10)/10;
+      if (criteria.some(v => !Number.isInteger(v) || v < 0 || v > 18)) return json({ error: "Каждый критерий должен быть от 0 до 18" }, 400);
+      const score = criteria.reduce((sum,v)=>sum+v,0);
       const release = await db.prepare("SELECT id FROM releases WHERE id = ?").bind(releaseId).first();
       if (!release) return json({ error: "Релиз не найден" }, 404);
       await db.prepare(`
