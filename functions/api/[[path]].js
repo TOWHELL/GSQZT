@@ -61,7 +61,7 @@ async function getUser(request, db, secret) {
     if (!valid) return null;
     const data = JSON.parse(new TextDecoder().decode(fromB64url(payload)));
     if (!data.exp || data.exp <= Date.now()) return null;
-    return await db.prepare("SELECT id, username, email FROM users WHERE id = ?").bind(data.id).first();
+    return await db.prepare("SELECT id, username, email, avatar FROM users WHERE id = ?").bind(data.id).first();
   } catch {
     return null;
   }
@@ -80,10 +80,10 @@ async function ensureSeeds(db) {
   }
 }
 function publicUser(user) {
-  return { id: user.id, username: user.username, email: user.email };
+  return { id: user.id, username: user.username, email: user.email, avatar: user.avatar || null };
 }
 
-async function ensureRatingColumns(db) {
+async function ensureAvatarColumn(db) {\n  const cols = await db.prepare("PRAGMA table_info(users)").all();\n  if (!(cols.results || []).some(c => c.name === "avatar")) await db.prepare("ALTER TABLE users ADD COLUMN avatar TEXT").run();\n}\n\nasync function ensureRatingColumns(db) {
   const ratingCols = await db.prepare("PRAGMA table_info(ratings)").all();
   const existingRatings = new Set((ratingCols.results || []).map(c => c.name));
   for (const name of ["sound","composition","lyrics","originality","atmosphere"]) {
@@ -152,7 +152,7 @@ export async function onRequest(context) {
   const db = env.GSQZT_DB;
 
   try {
-    await ensureSeeds(db);
+    await ensureSeeds(db);\n    await ensureAvatarColumn(db);
     await ensureSubmissionTables(db);
     await ensureRatingColumns(db);
     await ensureScoreScale(db);
@@ -240,11 +240,11 @@ export async function onRequest(context) {
     const profileMatch = path.match(/^\/api\/users\/([^/]+)$/);
     if (profileMatch && method === "GET") {
       const username = decodeURIComponent(profileMatch[1]);
-      const profile = await db.prepare("SELECT id,username,created_at FROM users WHERE username=? COLLATE NOCASE").bind(username).first();
+      const profile = await db.prepare("SELECT id,username,created_at,avatar FROM users WHERE username=? COLLATE NOCASE").bind(username).first();
       if (!profile) return json({ error: "Пользователь не найден" }, 404);
       const stats = await db.prepare("SELECT (SELECT COUNT(*) FROM reviews WHERE user_id=?) AS reviews_count,(SELECT COUNT(*) FROM ratings WHERE user_id=?) AS ratings_count,(SELECT ROUND(AVG(score),1) FROM reviews WHERE user_id=?) AS average_score").bind(profile.id,profile.id,profile.id).first();
       const items = await db.prepare("SELECT id,username,release_title AS release,artist,score,title,pros,cons,body,created_at,sound,composition,lyrics,originality,atmosphere FROM reviews WHERE user_id=? ORDER BY created_at DESC").bind(profile.id).all();
-      return json({ profile: { username: profile.username, created_at: profile.created_at, reviews_count: stats.reviews_count || 0, ratings_count: stats.ratings_count || 0, average_score: stats.average_score, reviews: items.results || [] } });
+      return json({ profile: { username: profile.username, created_at: profile.created_at, avatar: profile.avatar || null, reviews_count: stats.reviews_count || 0, ratings_count: stats.ratings_count || 0, average_score: stats.average_score, reviews: items.results || [] } });
     }
 
 
