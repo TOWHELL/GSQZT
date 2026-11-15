@@ -41,7 +41,7 @@ function renderTop(){
     html=rows.map((r,i)=>`<div class="leader-row"><b class="leader-place">${String(i+1).padStart(2,"0")}</b><div><h3>${r.username}</h3><p>${r.count} рецензий · средняя оценка ${r.average.toFixed(1)}/90</p></div><span class="score">${r.count} <small>РЕЦ.</small></span></div>`).join("");
   }
   box.innerHTML=html||"<p class='top-empty'>Пока недостаточно данных для этого топа.</p>";
-  $(".top-tab").forEach(b=>b.classList.toggle("active",b.dataset.top===activeTop));
+  $$(".top-tab").forEach(b=>b.classList.toggle("active",b.dataset.top===activeTop));
 }
 
 async function load(){let [a,b]=await Promise.all([api("/releases"),api("/reviews")]);releases=a.releases;reviews=b.reviews;draw()}
