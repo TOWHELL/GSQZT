@@ -118,6 +118,15 @@ async function loadMySubmissions(){
 async function loadPending(){
   try{const d=await api("/admin/submissions");$("#pendingSubmissions").innerHTML=d.submissions.map(x=>`<article class="review"><div><h3>${x.title} — ${x.artist}</h3><p>${x.type} · ${x.year} · ${x.genre} · от ${x.submitter}</p><p>${x.description||""}</p>${x.listening_url?`<p><a href="${x.listening_url}" target="_blank" rel="noopener">Ссылка на прослушивание</a></p>`:""}</div><div><button class="lime" data-approve="${x.id}">Одобрить</button> <button data-reject="${x.id}">Отклонить</button></div></article>`).join("")||"<p>Новых заявок нет.</p>";}catch(e){$("#pendingSubmissions").textContent=e.message;}
   renderAdminContent();
+  await loadAdminUsers();
+}
+async function loadAdminUsers(){
+  const host=$("#adminUsers");
+  if(!host)return;
+  try{
+    const d=await api("/admin/users");
+    host.innerHTML=(d.users||[]).map(u=>`<article class="review admin-item"><div><h3>${escapeHTML(u.username)}</h3><p>${escapeHTML(u.email)} · Регистрация: ${u.created_at?new Date(u.created_at).toLocaleDateString("ru-RU"):"—"}</p><p>Рецензий: ${Number(u.reviews_count)||0} · Оценок: ${Number(u.ratings_count)||0}</p></div><button class="danger" data-delete-user="${encodeURIComponent(u.id)}">Удалить аккаунт</button></article>`).join("")||"<p>Пользователей пока нет.</p>";
+  }catch(e){host.textContent=e.message;}
 }
 function renderAdminContent(){
   if(!user||user.username.toLowerCase()!=="towhell")return;
@@ -127,6 +136,20 @@ function renderAdminContent(){
 $("#submissionForm")?.addEventListener("submit",async e=>{e.preventDefault();if(!token){auth();return;}const data=Object.fromEntries(new FormData(e.currentTarget).entries());data.year=Number(data.year);try{await api("/submissions",{method:"POST",body:JSON.stringify(data)});e.currentTarget.reset();toast("Заявка отправлена на модерацию");await loadMySubmissions();}catch(err){toast(err.message);}});
 $("#pendingSubmissions")?.addEventListener("click",async e=>{const approve=e.target.closest("[data-approve]"),reject=e.target.closest("[data-reject]");const btn=approve||reject;if(!btn)return;try{let reason="";if(reject){reason=prompt("Причина отклонения (необязательно):")||"";}await api("/admin/submissions/"+btn.dataset[approve?"approve":"reject"]+"/"+(approve?"approve":"reject"),{method:"POST",body:JSON.stringify({reason})});toast(approve?"Релиз опубликован":"Заявка отклонена");await loadPending();await load();}catch(err){toast(err.message);}});
 $("#adminReleases")?.addEventListener("click",async e=>{const listen=e.target.closest("[data-save-listening]");if(listen){const id=listen.dataset.saveListening,input=$(`[data-listening-url="${id}"]`);try{await api("/admin/releases/"+id+"/listening",{method:"PATCH",body:JSON.stringify({listening_url:input.value})});await load();renderAdminContent();toast("Ссылка на прослушивание сохранена");}catch(err){toast(err.message);}return;}const save=e.target.closest("[data-save-cover]");if(save){const id=save.dataset.saveCover;const input=$(`[data-cover-url="${id}"]`);try{await api("/admin/releases/"+id+"/cover",{method:"PATCH",body:JSON.stringify({cover_url:input.value})});await load();renderAdminContent();toast("Обложка обновлена");}catch(err){toast(err.message);}return;}const btn=e.target.closest("[data-delete-release]");if(!btn)return;const r=releases.find(x=>x.id===Number(btn.dataset.deleteRelease));if(!r||!confirm(`Точно удалить трек «${r.title}»? Все его оценки и рецензии тоже будут удалены.`))return;try{await api("/admin/releases/"+r.id,{method:"DELETE"});await load();renderAdminContent();toast("Трек и связанные данные удалены");}catch(err){toast(err.message);}});
+$("#adminUsers")?.addEventListener("click",async e=>{
+  const btn=e.target.closest("[data-delete-user]");
+  if(!btn)return;
+  const id=decodeURIComponent(btn.dataset.deleteUser);
+  const row=btn.closest(".admin-item");
+  const username=row?.querySelector("h3")?.textContent||"пользователя";
+  if(!confirm(`Точно удалить аккаунт «${username}»? Его рецензии, оценки, комментарии, лайки и избранное тоже будут удалены. Это действие необратимо.`))return;
+  try{
+    await api("/admin/users/"+encodeURIComponent(id),{method:"DELETE"});
+    await load();
+    await loadAdminUsers();
+    toast("Аккаунт удалён");
+  }catch(err){toast(err.message);}
+});
 $("#adminReviews")?.addEventListener("click",async e=>{const btn=e.target.closest("[data-delete-review]");if(!btn)return;const r=reviews.find(x=>x.id===btn.dataset.deleteReview);if(!r||!confirm(`Удалить рецензию «${r.title||r.release}» от ${r.username}?`))return;try{await api("/admin/reviews/"+r.id,{method:"DELETE"});await load();renderAdminContent();toast("Рецензия удалена");}catch(err){toast(err.message);}});
 
 function criteriaFields(prefix){return [["sound","Рифмы / образы","Содержание текста, рифмовка, метафоры и запоминающиеся образы."],["composition","Структура / ритмика","Построение трека, развитие, динамика, ритмика и флоу."],["lyrics","Реализация стиля","Насколько убедительно и качественно воплощён выбранный стиль: бит, звук, исполнение и продакшн."],["originality","Индивидуальность / харизма","Самобытность артиста, узнаваемость, подача и эмоциональная убедительность."],["atmosphere","Атмосфера / вайб","Субъективное общее впечатление от релиза; этот балл задаёт множитель."]].map(([key,label,help])=>`<label class="field criterion"><span>${label.toUpperCase()} · 0–10</span><input id="${prefix}${key}" type="number" min="0" max="10" step="1" required><small>${help}</small></label>`).join("")}
