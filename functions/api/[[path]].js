@@ -220,10 +220,11 @@ export async function onRequest(context) {
     if (path === "/api/releases" && method === "GET") {
       const releases = await db.prepare(`
         SELECT r.*,
-          COALESCE(ROUND(AVG(rt.score),1), r.score) AS score
+          COALESCE(ROUND(AVG(rt.score),1), r.score) AS score,
+          CASE WHEN ? IS NOT NULL AND EXISTS(SELECT 1 FROM ratings mine WHERE mine.release_id=r.id AND mine.user_id=?) THEN 1 ELSE 0 END AS rated_by_me
         FROM releases r LEFT JOIN ratings rt ON rt.release_id = r.id
         GROUP BY r.id ORDER BY r.id
-      `).all();
+      `).bind(user?.id || null,user?.id || null).all();
       return json({ releases: releases.results || [] });
     }
 
@@ -429,10 +430,10 @@ export async function onRequest(context) {
       const score = (criteria[0]+criteria[1]+criteria[2]+criteria[3])*(1+criteria[4]*0.125);
       const release = await db.prepare("SELECT id FROM releases WHERE id = ?").bind(releaseId).first();
       if (!release) return json({ error: "Релиз не найден" }, 404);
-      await db.prepare(`
-        INSERT INTO ratings (user_id,release_id,score,sound,composition,lyrics,originality,atmosphere) VALUES (?,?,?,?,?,?,?,?)
-        ON CONFLICT(user_id,release_id) DO UPDATE SET score=excluded.score,sound=excluded.sound,composition=excluded.composition,lyrics=excluded.lyrics,originality=excluded.originality,atmosphere=excluded.atmosphere
-      `).bind(user.id, releaseId, score, ...criteria).run();
+      const existingRating = await db.prepare("SELECT 1 AS found FROM ratings WHERE user_id=? AND release_id=?").bind(user.id,releaseId).first();
+      if (existingRating) return json({ error: "Ты уже оценил этот релиз. Повторная оценка запрещена." }, 409);
+      await db.prepare("INSERT INTO ratings (user_id,release_id,score,sound,composition,lyrics,originality,atmosphere) VALUES (?,?,?,?,?,?,?,?)")
+        .bind(user.id, releaseId, score, ...criteria).run();
       return json({ ok: true });
     }
 
