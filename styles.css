@@ -333,3 +333,5 @@
 .card .rated-label::before{content:none;display:none}
 
 .rating-modal .delete-rating-button{display:block;margin:22px 0 0 auto;padding:11px 16px;}
+
+.rating-release-info{display:grid;grid-template-columns:minmax(110px,.32fr) minmax(0,1fr);gap:12px;margin:16px 0 20px;padding:15px;background:#202026;border:1px solid #33333c;border-radius:9px}.rating-release-info span{display:block;margin-bottom:7px;color:var(--muted);font:800 8px Manrope,sans-serif;letter-spacing:.12em}.rating-release-genre b{font-size:12px;color:var(--acid)}.rating-release-description p{margin:0;color:#d0cfd4;font:11px/1.65 Manrope,sans-serif;white-space:pre-wrap;overflow-wrap:anywhere}@media(max-width:520px){.rating-release-info{grid-template-columns:1fr;gap:12px;margin:13px 0 17px;padding:12px}}
