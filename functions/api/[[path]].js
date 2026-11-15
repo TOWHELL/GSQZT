@@ -482,6 +482,25 @@ export async function onRequest(context) {
       } else await db.prepare("DELETE FROM user_follows WHERE follower_user_id=? AND followed_user_id=?").bind(user.id,target.id).run();
       return json({ ok: true, following: method === "POST" });
     }
+    if(path==="/api/following/activity"&&method==="GET"){
+      if(!user)return json({error:"Войди, чтобы смотреть ленту активности"},401);
+      const rows=await db.prepare(`
+        SELECT * FROM (
+          SELECT 'review' AS type,rv.id AS event_id,rv.user_id AS actor_id,rv.username AS actor_username,u.avatar AS avatar,rv.created_at,rv.id AS review_id,rv.title AS title,rv.release_title AS release_title,rv.artist AS artist,substr(rv.body,1,180) AS excerpt
+          FROM reviews rv JOIN users u ON u.id=rv.user_id JOIN user_follows uf ON uf.followed_user_id=rv.user_id
+          WHERE uf.follower_user_id=?
+          UNION ALL
+          SELECT 'comment' AS type,rc.id AS event_id,rc.user_id AS actor_id,rc.username AS actor_username,u.avatar AS avatar,rc.created_at,rv.id AS review_id,rv.title AS title,rv.release_title AS release_title,rv.artist AS artist,substr(rc.body,1,180) AS excerpt
+          FROM review_comments rc JOIN users u ON u.id=rc.user_id JOIN reviews rv ON rv.id=rc.review_id JOIN user_follows uf ON uf.followed_user_id=rc.user_id
+          WHERE uf.follower_user_id=?
+          UNION ALL
+          SELECT 'like' AS type,CAST(rl.rowid AS TEXT) AS event_id,rl.user_id AS actor_id,u.username AS actor_username,u.avatar AS avatar,rl.created_at,rv.id AS review_id,rv.title AS title,rv.release_title AS release_title,rv.artist AS artist,'' AS excerpt
+          FROM review_likes rl JOIN users u ON u.id=rl.user_id JOIN reviews rv ON rv.id=rl.review_id JOIN user_follows uf ON uf.followed_user_id=rl.user_id
+          WHERE uf.follower_user_id=?
+        ) ORDER BY created_at DESC LIMIT 100
+      `).bind(user.id,user.id,user.id).all();
+      return json({activities:rows.results||[]});
+    }
     if (path === "/api/following/reviews" && method === "GET") {
       if (!user) return json({ error: "Войдите, чтобы смотреть подписки" }, 401);
       const rows = await db.prepare("SELECT rv.id,rv.release_id,rv.username,u.avatar,rv.release_title AS release,rv.artist,rv.score,rv.title,rv.pros,rv.cons,rv.body,rv.created_at,rv.sound,rv.composition,rv.lyrics,rv.originality,rv.atmosphere,(SELECT COUNT(*) FROM review_likes rl WHERE rl.review_id=rv.id) AS likes_count,(SELECT COUNT(*) FROM review_comments rc WHERE rc.review_id=rv.id) AS comments_count,CASE WHEN EXISTS(SELECT 1 FROM review_likes rl WHERE rl.review_id=rv.id AND rl.user_id=?) THEN 1 ELSE 0 END AS liked_by_me,0 AS can_edit FROM reviews rv JOIN users u ON u.id=rv.user_id JOIN user_follows uf ON uf.followed_user_id=rv.user_id WHERE uf.follower_user_id=? ORDER BY rv.created_at DESC LIMIT 100").bind(user.id,user.id).all();
