@@ -331,3 +331,5 @@
   box-shadow:0 0 14px rgba(212,250,69,.12);
 }
 .card .rated-label::before{content:none;display:none}
+
+.rating-modal .delete-rating-button{display:block;margin:22px 0 0 auto;padding:11px 16px;}
