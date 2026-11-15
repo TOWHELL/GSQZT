@@ -79,7 +79,7 @@ async function loadNotifications(){
  try{const d=await api("/notifications");notifications=d.notifications||[];const count=Number(d.unread_count)||0,badge=$("#notificationCount");if(badge){badge.textContent=count>99?"99+":String(count);badge.classList.toggle("hidden",count===0);}renderNotifications();}catch(e){toast(e.message);}
 }
 async function loadFavorites(){if(!token){favoriteIds=new Set();return;}try{const d=await api("/favorites");favoriteIds=new Set(d.favorites.map(Number));}catch(e){favoriteIds=new Set();toast(e.message)}}
-async function load(){let [a,b]=await Promise.all([api("/releases"),api("/reviews")]);releases=a.releases;reviews=b.reviews;await loadFavorites();draw()}
+async function load(){const requests=[api("/releases"),api("/reviews")];if(token)requests.push(api("/favorites").catch(e=>{toast(e.message);return {favorites:[]}}));const [a,b,favs]=await Promise.all(requests);releases=a.releases||[];reviews=b.reviews||[];favoriteIds=new Set((favs?.favorites||[]).map(Number));draw()}
 async function loadFavoritePage(){if(!token){$("#favoriteReleases").innerHTML="<p>Войди, чтобы сохранять релизы в избранное.</p>";return;}const saved=releases.filter(r=>favoriteIds.has(Number(r.id)));$("#favoriteReleases").innerHTML=saved.map(card).join("")||"<p>Пока ничего не добавлено. Нажми ♡ на карточке релиза.</p>";}
 function renderSearch(value){
   const q=String(value||"").trim().toLocaleLowerCase("ru");
