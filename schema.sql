@@ -4,7 +4,8 @@ CREATE TABLE IF NOT EXISTS users (
   email TEXT NOT NULL COLLATE NOCASE UNIQUE,
   salt TEXT NOT NULL,
   password_hash TEXT NOT NULL,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  pinned_review_id TEXT
 );
 
 CREATE TABLE IF NOT EXISTS releases (
@@ -64,4 +65,21 @@ CREATE TABLE IF NOT EXISTS notifications (
  id TEXT PRIMARY KEY, recipient_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
  actor_user_id TEXT, actor_username TEXT NOT NULL, type TEXT NOT NULL,
  review_id TEXT NOT NULL REFERENCES reviews(id) ON DELETE CASCADE, created_at TEXT NOT NULL, read_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS user_follows (
+  follower_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  followed_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (follower_user_id, followed_user_id)
+);
+
+CREATE TABLE IF NOT EXISTS review_comments (
+  id TEXT PRIMARY KEY,
+  review_id TEXT NOT NULL REFERENCES reviews(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  username TEXT NOT NULL,
+  body TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  parent_comment_id TEXT
 );
