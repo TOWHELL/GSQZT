@@ -249,11 +249,29 @@ export async function onRequest(context) {
       return json({ ok: true });
     }
 
+    await db.prepare("CREATE TABLE IF NOT EXISTS review_likes (user_id TEXT NOT NULL REFERENCES users(id), review_id TEXT NOT NULL REFERENCES reviews(id) ON DELETE CASCADE, created_at TEXT NOT NULL, PRIMARY KEY(user_id,review_id))").run();
+
+    const reviewLikeMatch = path.match(/^\/api\/reviews\/([a-f0-9-]+)\/like$/i);
+    if (reviewLikeMatch && method === "POST") {
+      if (!user) return json({ error: "Войдите, чтобы лайкать рецензии" }, 401);
+      const exists = await db.prepare("SELECT id FROM reviews WHERE id=?").bind(reviewLikeMatch[1]).first();
+      if (!exists) return json({ error: "Рецензия не найдена" }, 404);
+      await db.prepare("INSERT OR IGNORE INTO review_likes (user_id,review_id,created_at) VALUES (?,?,?)").bind(user.id,reviewLikeMatch[1],new Date().toISOString()).run();
+      return json({ ok: true });
+    }
+    if (reviewLikeMatch && method === "DELETE") {
+      if (!user) return json({ error: "Войдите в аккаунт" }, 401);
+      await db.prepare("DELETE FROM review_likes WHERE user_id=? AND review_id=?").bind(user.id,reviewLikeMatch[1]).run();
+      return json({ ok: true });
+    }
+
     if (path === "/api/reviews" && method === "GET") {
       const reviews = await db.prepare(`
-        SELECT rv.id, rv.username, rv.release_title AS release, rv.artist, rv.score, rv.title, rv.pros, rv.cons, rv.body, rv.created_at, rv.sound, rv.composition, rv.lyrics, rv.originality, rv.atmosphere
+        SELECT rv.id, rv.username, rv.release_title AS release, rv.artist, rv.score, rv.title, rv.pros, rv.cons, rv.body, rv.created_at, rv.sound, rv.composition, rv.lyrics, rv.originality, rv.atmosphere,
+          (SELECT COUNT(*) FROM review_likes rl WHERE rl.review_id=rv.id) AS likes_count,
+          CASE WHEN ? IS NOT NULL AND EXISTS(SELECT 1 FROM review_likes rl WHERE rl.review_id=rv.id AND rl.user_id=?) THEN 1 ELSE 0 END AS liked_by_me
         FROM reviews rv ORDER BY rv.created_at DESC
-      `).all();
+      `).bind(user?.id || null,user?.id || null).all();
       return json({ reviews: reviews.results || [] });
     }
 
