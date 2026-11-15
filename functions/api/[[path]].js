@@ -325,15 +325,20 @@ export async function onRequest(context) {
       if (!reviewExists) return json({ error: "Рецензия не найдена" }, 404);
       if (!bodyText || bodyText.length > 1000) return json({ error: "Комментарий должен содержать от 1 до 1000 символов" }, 400);
       const parentId = body.parentCommentId ? String(body.parentCommentId) : null;
+      let parentComment = null;
       if (parentId) {
-        const parent = await db.prepare("SELECT id FROM review_comments WHERE id=? AND review_id=?").bind(parentId,reviewCommentsMatch[1]).first();
-        if (!parent) return json({ error: "Комментарий для ответа не найден" }, 404);
+        parentComment = await db.prepare("SELECT id,user_id FROM review_comments WHERE id=? AND review_id=?").bind(parentId,reviewCommentsMatch[1]).first();
+        if (!parentComment) return json({ error: "Комментарий для ответа не найден" }, 404);
       }
       const id = crypto.randomUUID();
       const reviewOwner = await db.prepare("SELECT user_id FROM reviews WHERE id=?").bind(reviewCommentsMatch[1]).first();
       await db.prepare("INSERT INTO review_comments (id,review_id,user_id,username,body,created_at,parent_comment_id) VALUES (?,?,?,?,?,?,?)")
         .bind(id,reviewCommentsMatch[1],user.id,user.username,bodyText,new Date().toISOString(),parentId).run();
-      if (reviewOwner?.user_id !== user.id) await db.prepare("INSERT INTO notifications (id,recipient_user_id,actor_user_id,actor_username,type,review_id,created_at) VALUES (?,?,?,?,?,?,?)").bind(crypto.randomUUID(),reviewOwner.user_id,user.id,user.username,"comment",reviewCommentsMatch[1],new Date().toISOString()).run();
+      if (parentId) {
+        if (parentComment?.user_id && parentComment.user_id !== user.id) await db.prepare("INSERT INTO notifications (id,recipient_user_id,actor_user_id,actor_username,type,review_id,created_at) VALUES (?,?,?,?,?,?,?)").bind(crypto.randomUUID(),parentComment.user_id,user.id,user.username,"reply",reviewCommentsMatch[1],new Date().toISOString()).run();
+      } else if (reviewOwner?.user_id !== user.id) {
+        await db.prepare("INSERT INTO notifications (id,recipient_user_id,actor_user_id,actor_username,type,review_id,created_at) VALUES (?,?,?,?,?,?,?)").bind(crypto.randomUUID(),reviewOwner.user_id,user.id,user.username,"comment",reviewCommentsMatch[1],new Date().toISOString()).run();
+      }
       return json({ ok: true, id }, 201);
     }
     const commentDeleteMatch = path.match(/^\/api\/reviews\/([a-f0-9-]+)\/comments\/([a-f0-9-]+)$/i);
@@ -680,6 +685,11 @@ export async function onRequest(context) {
       } else {
         await db.prepare("INSERT INTO ratings (user_id,release_id,score,sound,composition,lyrics,originality,atmosphere) VALUES (?,?,?,?,?,?,?,?)")
           .bind(user.id,releaseId,score,...criteria).run();
+      }
+      const followers = await db.prepare("SELECT follower_user_id FROM user_follows WHERE followed_user_id=?").bind(user.id).all();
+      for (const follower of (followers.results || [])) {
+        await db.prepare("INSERT INTO notifications (id,recipient_user_id,actor_user_id,actor_username,type,review_id,created_at) VALUES (?,?,?,?,?,?,?)")
+          .bind(crypto.randomUUID(),follower.follower_user_id,user.id,user.username,"new_review",id,createdAt).run();
       }
       return json({ ok: true }, 201);
     }
