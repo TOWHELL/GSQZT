@@ -151,6 +151,11 @@ async function ensureCommunityFeatures(db) {
   const commentCols = await db.prepare("PRAGMA table_info(review_comments)").all();
   if (!(commentCols.results || []).some(c => c.name === "parent_comment_id")) await db.prepare("ALTER TABLE review_comments ADD COLUMN parent_comment_id TEXT").run();
 }
+async function ensureDirectMessages(db) {
+  await db.prepare("CREATE TABLE IF NOT EXISTS direct_messages (id TEXT PRIMARY KEY, sender_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, recipient_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, body TEXT NOT NULL, created_at TEXT NOT NULL, read_at TEXT)").run();
+  await db.prepare("CREATE INDEX IF NOT EXISTS idx_direct_messages_sender_created ON direct_messages(sender_user_id,created_at)").run();
+  await db.prepare("CREATE INDEX IF NOT EXISTS idx_direct_messages_recipient_created ON direct_messages(recipient_user_id,created_at)").run();
+}
 async function ensureReportsTable(db) {
   await db.prepare("CREATE TABLE IF NOT EXISTS content_reports (id TEXT PRIMARY KEY, reporter_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, target_type TEXT NOT NULL, target_id TEXT NOT NULL, reason TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', created_at TEXT NOT NULL, reviewed_at TEXT, reviewed_by TEXT, UNIQUE(reporter_user_id,target_type,target_id))").run();
 }
@@ -198,6 +203,7 @@ export async function onRequest(context) {
     await ensureCommunityFeatures(db);
     await ensureNotificationsTable(db);
     await ensureReportsTable(db);
+    await ensureDirectMessages(db);
     await ensureRatingColumns(db);
     await ensureScoreScale(db);
     await ensureAtmosphereMultiplier(db);
@@ -291,6 +297,26 @@ export async function onRequest(context) {
 
     await db.prepare("CREATE TABLE IF NOT EXISTS review_likes (user_id TEXT NOT NULL REFERENCES users(id), review_id TEXT NOT NULL REFERENCES reviews(id) ON DELETE CASCADE, created_at TEXT NOT NULL, PRIMARY KEY(user_id,review_id))").run();
     await db.prepare("CREATE TABLE IF NOT EXISTS review_comments (id TEXT PRIMARY KEY, review_id TEXT NOT NULL REFERENCES reviews(id) ON DELETE CASCADE, user_id TEXT NOT NULL REFERENCES users(id), username TEXT NOT NULL, body TEXT NOT NULL, created_at TEXT NOT NULL)").run();
+    if (path === "/api/messages" && method === "GET") {
+      if (!user) return json({ error: "Войдите, чтобы смотреть сообщения" }, 401);
+      const rows = await db.prepare("SELECT dm.sender_user_id,dm.recipient_user_id,dm.body,dm.created_at,dm.read_at,s.username AS sender_username,s.avatar AS sender_avatar,r.username AS recipient_username,r.avatar AS recipient_avatar FROM direct_messages dm JOIN users s ON s.id=dm.sender_user_id JOIN users r ON r.id=dm.recipient_user_id WHERE dm.sender_user_id=? OR dm.recipient_user_id=? ORDER BY dm.created_at DESC LIMIT 1000").bind(user.id,user.id).all();
+      const conversations=new Map();
+      for(const m of rows.results||[]){const mine=m.sender_user_id===user.id,other=mine?m.recipient_user_id:m.sender_user_id;if(!conversations.has(other))conversations.set(other,{username:mine?m.recipient_username:m.sender_username,avatar:mine?m.recipient_avatar:m.sender_avatar,last_message:m.body,created_at:m.created_at,unread_count:0});if(!mine&&!m.read_at)conversations.get(other).unread_count++;}
+      return json({conversations:[...conversations.values()]});
+    }
+    const messagePrefix="/api/messages/with/";
+    if(path.startsWith(messagePrefix)&&(method==="GET"||method==="POST")){
+      if(!user)return json({error:"Войдите, чтобы отправлять сообщения"},401);
+      const username=decodeURIComponent(path.slice(messagePrefix.length));
+      const recipient=await db.prepare("SELECT id,username,avatar FROM users WHERE username=? COLLATE NOCASE").bind(username).first();
+      if(!recipient)return json({error:"Пользователь не найден"},404);
+      if(recipient.id===user.id)return json({error:"Нельзя отправить сообщение самому себе"},400);
+      if(method==="POST"){const message=String(body.body||"").trim();if(!message||message.length>2000)return json({error:"Сообщение должно содержать от 1 до 2000 символов"},400);const id=crypto.randomUUID(),createdAt=new Date().toISOString();await db.prepare("INSERT INTO direct_messages (id,sender_user_id,recipient_user_id,body,created_at) VALUES (?,?,?,?,?)").bind(id,user.id,recipient.id,message,createdAt).run();return json({ok:true,id,created_at:createdAt},201);}
+      await db.prepare("UPDATE direct_messages SET read_at=COALESCE(read_at,?) WHERE sender_user_id=? AND recipient_user_id=? AND read_at IS NULL").bind(new Date().toISOString(),recipient.id,user.id).run();
+      const rows=await db.prepare("SELECT id,sender_user_id,recipient_user_id,body,created_at,read_at FROM direct_messages WHERE (sender_user_id=? AND recipient_user_id=?) OR (sender_user_id=? AND recipient_user_id=?) ORDER BY created_at ASC LIMIT 500").bind(user.id,recipient.id,recipient.id,user.id).all();
+      return json({user:{username:recipient.username,avatar:recipient.avatar},messages:(rows.results||[]).map(m=>({...m,mine:m.sender_user_id===user.id}))});
+    }
+
     if (path === "/api/notifications" && method === "GET") {
       if (!user) return json({ error: "Войдите, чтобы смотреть уведомления" }, 401);
       const rows = await db.prepare("SELECT n.id,n.type,n.actor_username,n.review_id,n.created_at,n.read_at,rv.title,rv.release_title,rv.artist FROM notifications n LEFT JOIN reviews rv ON rv.id=n.review_id WHERE n.recipient_user_id=? ORDER BY n.created_at DESC LIMIT 100").bind(user.id).all();
