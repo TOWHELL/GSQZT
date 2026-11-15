@@ -420,7 +420,19 @@ export async function onRequest(context) {
       const social = await db.prepare("SELECT (SELECT COUNT(*) FROM user_follows WHERE followed_user_id=?) AS followers_count,(SELECT COUNT(*) FROM user_follows WHERE follower_user_id=?) AS following_count,CASE WHEN ? IS NOT NULL AND EXISTS(SELECT 1 FROM user_follows WHERE follower_user_id=? AND followed_user_id=?) THEN 1 ELSE 0 END AS is_following").bind(profile.id,profile.id,user?.id || null,user?.id || null,profile.id).first();
       const favoriteGenre = await db.prepare("SELECT r.genre,COUNT(*) AS amount FROM ratings rt JOIN releases r ON r.id=rt.release_id WHERE rt.user_id=? AND COALESCE(r.genre,'')<>'' GROUP BY r.genre ORDER BY amount DESC,r.genre LIMIT 1").bind(profile.id).first();
       const listened = await db.prepare("SELECT COUNT(DISTINCT release_id) AS count FROM ratings WHERE user_id=?").bind(profile.id).first();
-      return json({ profile: { username: profile.username, created_at: profile.created_at, avatar: profile.avatar || null, pinned_review_id: profile.pinned_review_id || null, reviews_count: stats.reviews_count || 0, ratings_count: stats.ratings_count || 0, average_score: stats.average_score, favorite_genre: favoriteGenre?.genre || null, listened_count: listened?.count || 0, followers_count: social?.followers_count || 0, following_count: social?.following_count || 0, is_following: !!social?.is_following, reviews: items.results || [] } });
+      const activity = await db.prepare("SELECT (SELECT COUNT(*) FROM review_comments WHERE user_id=?) AS comments_count,(SELECT COUNT(*) FROM review_likes rl JOIN reviews rv ON rv.id=rl.review_id WHERE rv.user_id=?) AS likes_received").bind(profile.id,profile.id).first();
+      const xp = (Number(stats.ratings_count)||0)*10 + (Number(stats.reviews_count)||0)*25 + (Number(activity?.comments_count)||0)*2 + (Number(activity?.likes_received)||0)*5;
+      const level = Math.floor(xp/100)+1;
+      const achievements = [
+        {id:"first_rating",title:"Первый вердикт",description:"Поставить первую оценку",icon:"★",earned:Number(stats.ratings_count)>=1},
+        {id:"first_review",title:"Голос критика",description:"Опубликовать первую рецензию",icon:"✎",earned:Number(stats.reviews_count)>=1},
+        {id:"critic_5",title:"Постоянный критик",description:"Написать 5 рецензий",icon:"✦",earned:Number(stats.reviews_count)>=5},
+        {id:"collector_10",title:"Меломан",description:"Оценить 10 релизов",icon:"♫",earned:Number(stats.ratings_count)>=10},
+        {id:"commenter_10",title:"В центре беседы",description:"Оставить 10 комментариев",icon:"☷",earned:Number(activity?.comments_count)>=10},
+        {id:"popular_10",title:"Признание",description:"Получить 10 лайков на рецензии",icon:"♥",earned:Number(activity?.likes_received)>=10},
+        {id:"social_5",title:"Свои люди",description:"Собрать 5 подписчиков",icon:"＋",earned:Number(social?.followers_count)>=5}
+      ];
+      return json({ profile: { username: profile.username, created_at: profile.created_at, avatar: profile.avatar || null, pinned_review_id: profile.pinned_review_id || null, reviews_count: stats.reviews_count || 0, ratings_count: stats.ratings_count || 0, average_score: stats.average_score, favorite_genre: favoriteGenre?.genre || null, listened_count: listened?.count || 0, followers_count: social?.followers_count || 0, following_count: social?.following_count || 0, is_following: !!social?.is_following, xp, level, xp_to_next_level: level*100-xp, achievements, reviews: items.results || [] } });
     }
 
 
