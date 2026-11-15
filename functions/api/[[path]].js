@@ -207,7 +207,29 @@ export async function onRequest(context) {
       return json({ releases: releases.results || [] });
     }
 
-    await db.prepare("CREATE TABLE IF NOT EXISTS favorites (user_id TEXT NOT NULL REFERENCES users(id), release_id INTEGER NOT NULL REFERENCES releases(id), created_at TEXT NOT NULL, PRIMARY KEY(user_id,release_id))").run();\n\n    if (path === "/api/favorites" && method === "GET") {\n      if (!user) return json({ error: "Войдите, чтобы видеть избранное" }, 401);\n      const rows = await db.prepare("SELECT release_id FROM favorites WHERE user_id=? ORDER BY created_at DESC").bind(user.id).all();\n      return json({ favorites: (rows.results || []).map(x => x.release_id) });\n    }\n    const favoriteMatch = path.match(/^\\/api\\/favorites\\/(\\d+)$/);\n    if (favoriteMatch && method === "POST") {\n      if (!user) return json({ error: "Войдите, чтобы добавлять в избранное" }, 401);\n      const releaseId = Number(favoriteMatch[1]);\n      const exists = await db.prepare("SELECT id FROM releases WHERE id=?").bind(releaseId).first();\n      if (!exists) return json({ error: "Релиз не найден" }, 404);\n      await db.prepare("INSERT OR IGNORE INTO favorites (user_id,release_id,created_at) VALUES (?,?,?)").bind(user.id,releaseId,new Date().toISOString()).run();\n      return json({ ok: true });\n    }\n    if (favoriteMatch && method === "DELETE") {\n      if (!user) return json({ error: "Войдите в аккаунт" }, 401);\n      await db.prepare("DELETE FROM favorites WHERE user_id=? AND release_id=?").bind(user.id,Number(favoriteMatch[1])).run();\n      return json({ ok: true });\n    }\n\n    if (path === "/api/reviews" && method === "GET") {
+    await db.prepare("CREATE TABLE IF NOT EXISTS favorites (user_id TEXT NOT NULL REFERENCES users(id), release_id INTEGER NOT NULL REFERENCES releases(id), created_at TEXT NOT NULL, PRIMARY KEY(user_id,release_id))").run();
+
+    if (path === "/api/favorites" && method === "GET") {
+      if (!user) return json({ error: "Войдите, чтобы видеть избранное" }, 401);
+      const rows = await db.prepare("SELECT release_id FROM favorites WHERE user_id=? ORDER BY created_at DESC").bind(user.id).all();
+      return json({ favorites: (rows.results || []).map(x => x.release_id) });
+    }
+    const favoriteMatch = path.match(/^\\/api\\/favorites\\/(\\d+)$/);
+    if (favoriteMatch && method === "POST") {
+      if (!user) return json({ error: "Войдите, чтобы добавлять в избранное" }, 401);
+      const releaseId = Number(favoriteMatch[1]);
+      const exists = await db.prepare("SELECT id FROM releases WHERE id=?").bind(releaseId).first();
+      if (!exists) return json({ error: "Релиз не найден" }, 404);
+      await db.prepare("INSERT OR IGNORE INTO favorites (user_id,release_id,created_at) VALUES (?,?,?)").bind(user.id,releaseId,new Date().toISOString()).run();
+      return json({ ok: true });
+    }
+    if (favoriteMatch && method === "DELETE") {
+      if (!user) return json({ error: "Войдите в аккаунт" }, 401);
+      await db.prepare("DELETE FROM favorites WHERE user_id=? AND release_id=?").bind(user.id,Number(favoriteMatch[1])).run();
+      return json({ ok: true });
+    }
+
+    if (path === "/api/reviews" && method === "GET") {
       const reviews = await db.prepare(`
         SELECT rv.id, rv.username, rv.release_title AS release, rv.artist, rv.score, rv.title, rv.pros, rv.cons, rv.body, rv.created_at, rv.sound, rv.composition, rv.lyrics, rv.originality, rv.atmosphere
         FROM reviews rv ORDER BY rv.created_at DESC
@@ -260,7 +282,9 @@ export async function onRequest(context) {
       await db.batch([
         db.prepare("INSERT INTO releases (id,title,artist,type,year,tag,art,cover,description,score) VALUES (?,?,?,?,?,?,?,?,?,?)")
           .bind(next.id,submission.title,submission.artist,submission.type,submission.year,submission.genre || "COMMUNITY",art,
-            "linear-gradient(135deg,#d4fa45,#53652a)",submission.description + (submission.listening_url ? "\\n\\nСлушать: " + submission.listening_url : ""),0),
+            "linear-gradient(135deg,#d4fa45,#53652a)",submission.description + (submission.listening_url ? "\
+\
+Слушать: " + submission.listening_url : ""),0),
         db.prepare("UPDATE release_submissions SET status='approved',reviewed_at=?,reviewed_by=? WHERE id=?")
           .bind(new Date().toISOString(),user.id,submissionId)
       ]);
