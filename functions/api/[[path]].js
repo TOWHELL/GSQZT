@@ -151,6 +151,17 @@ async function ensureCommunityFeatures(db) {
   const commentCols = await db.prepare("PRAGMA table_info(review_comments)").all();
   if (!(commentCols.results || []).some(c => c.name === "parent_comment_id")) await db.prepare("ALTER TABLE review_comments ADD COLUMN parent_comment_id TEXT").run();
 }
+async function ensureNotificationsTable(db) {
+  await db.prepare("CREATE TABLE IF NOT EXISTS notifications (id TEXT PRIMARY KEY, recipient_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, actor_user_id TEXT, actor_username TEXT NOT NULL, type TEXT NOT NULL, review_id TEXT REFERENCES reviews(id) ON DELETE CASCADE, created_at TEXT NOT NULL, read_at TEXT)").run();
+  const cols = await db.prepare("PRAGMA table_info(notifications)").all();
+  const reviewColumn = (cols.results || []).find(c => c.name === "review_id");
+  if (reviewColumn && Number(reviewColumn.notnull) === 1) {
+    await db.prepare("CREATE TABLE notifications_v2 (id TEXT PRIMARY KEY, recipient_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, actor_user_id TEXT, actor_username TEXT NOT NULL, type TEXT NOT NULL, review_id TEXT REFERENCES reviews(id) ON DELETE CASCADE, created_at TEXT NOT NULL, read_at TEXT)").run();
+    await db.prepare("INSERT INTO notifications_v2 (id,recipient_user_id,actor_user_id,actor_username,type,review_id,created_at,read_at) SELECT id,recipient_user_id,actor_user_id,actor_username,type,review_id,created_at,read_at FROM notifications").run();
+    await db.prepare("DROP TABLE notifications").run();
+    await db.prepare("ALTER TABLE notifications_v2 RENAME TO notifications").run();
+  }
+}
 async function ensureSubmissionTables(db) {
   await db.prepare(`
     CREATE TABLE IF NOT EXISTS release_submissions (
@@ -181,6 +192,7 @@ export async function onRequest(context) {
     await ensureReleaseGenreColumn(db);
     await ensureSubmissionTables(db);
     await ensureCommunityFeatures(db);
+    await ensureNotificationsTable(db);
     await ensureRatingColumns(db);
     await ensureScoreScale(db);
     await ensureAtmosphereMultiplier(db);
@@ -275,11 +287,9 @@ export async function onRequest(context) {
 
     await db.prepare("CREATE TABLE IF NOT EXISTS review_likes (user_id TEXT NOT NULL REFERENCES users(id), review_id TEXT NOT NULL REFERENCES reviews(id) ON DELETE CASCADE, created_at TEXT NOT NULL, PRIMARY KEY(user_id,review_id))").run();
     await db.prepare("CREATE TABLE IF NOT EXISTS review_comments (id TEXT PRIMARY KEY, review_id TEXT NOT NULL REFERENCES reviews(id) ON DELETE CASCADE, user_id TEXT NOT NULL REFERENCES users(id), username TEXT NOT NULL, body TEXT NOT NULL, created_at TEXT NOT NULL)").run();
-    await db.prepare("CREATE TABLE IF NOT EXISTS notifications (id TEXT PRIMARY KEY, recipient_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, actor_user_id TEXT, actor_username TEXT NOT NULL, type TEXT NOT NULL, review_id TEXT NOT NULL REFERENCES reviews(id) ON DELETE CASCADE, created_at TEXT NOT NULL, read_at TEXT)").run();
-
     if (path === "/api/notifications" && method === "GET") {
       if (!user) return json({ error: "Войдите, чтобы смотреть уведомления" }, 401);
-      const rows = await db.prepare("SELECT n.id,n.type,n.actor_username,n.review_id,n.created_at,n.read_at,rv.title,rv.release_title,rv.artist FROM notifications n JOIN reviews rv ON rv.id=n.review_id WHERE n.recipient_user_id=? ORDER BY n.created_at DESC LIMIT 100").bind(user.id).all();
+      const rows = await db.prepare("SELECT n.id,n.type,n.actor_username,n.review_id,n.created_at,n.read_at,rv.title,rv.release_title,rv.artist FROM notifications n LEFT JOIN reviews rv ON rv.id=n.review_id WHERE n.recipient_user_id=? ORDER BY n.created_at DESC LIMIT 100").bind(user.id).all();
       const unread = await db.prepare("SELECT COUNT(*) AS count FROM notifications WHERE recipient_user_id=? AND read_at IS NULL").bind(user.id).first();
       return json({ notifications: rows.results || [], unread_count: unread?.count || 0 });
     }
@@ -386,8 +396,13 @@ export async function onRequest(context) {
       const target = await db.prepare("SELECT id,username FROM users WHERE username=? COLLATE NOCASE").bind(decodeURIComponent(followMatch[1])).first();
       if (!target) return json({ error: "Пользователь не найден" }, 404);
       if (target.id === user.id) return json({ error: "Нельзя подписаться на самого себя" }, 400);
-      if (method === "POST") await db.prepare("INSERT OR IGNORE INTO user_follows (follower_user_id,followed_user_id,created_at) VALUES (?,?,?)").bind(user.id,target.id,new Date().toISOString()).run();
-      else await db.prepare("DELETE FROM user_follows WHERE follower_user_id=? AND followed_user_id=?").bind(user.id,target.id).run();
+      if (method === "POST") {
+        const followed = await db.prepare("INSERT OR IGNORE INTO user_follows (follower_user_id,followed_user_id,created_at) VALUES (?,?,?)").bind(user.id,target.id,new Date().toISOString()).run();
+        if (followed.meta?.changes) {
+          await db.prepare("INSERT INTO notifications (id,recipient_user_id,actor_user_id,actor_username,type,review_id,created_at) VALUES (?,?,?,?,?,?,?)")
+            .bind(crypto.randomUUID(),target.id,user.id,user.username,"follow",null,new Date().toISOString()).run();
+        }
+      } else await db.prepare("DELETE FROM user_follows WHERE follower_user_id=? AND followed_user_id=?").bind(user.id,target.id).run();
       return json({ ok: true, following: method === "POST" });
     }
     if (path === "/api/following/reviews" && method === "GET") {
