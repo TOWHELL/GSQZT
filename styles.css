@@ -207,3 +207,7 @@
 .review-compose .field textarea{background:#202026;border:1px solid #33333c;border-radius:8px;color:#f0efe9;padding:12px;resize:vertical;font:12px/1.6 Manrope,sans-serif}
 .review-compose .field textarea:focus,.review-compose .review-title input:focus,.review-compose .review-release select:focus{outline:1px solid var(--acid);border-color:var(--acid)}
 .review-compose .field textarea::placeholder{color:#777780}
+
+
+/* Review likes */
+.review-like{display:inline-flex;align-items:center;gap:7px;margin-top:13px;padding:7px 11px;border:1px solid #41414a;border-radius:8px;background:#17171c;color:#b8b8bd;font:700 12px 'DM Mono';cursor:pointer;transition:border-color .18s ease,color .18s ease,background .18s ease}.review-like:hover,.review-like.is-liked{color:var(--acid);border-color:#777b4c;background:#25271b}.review-like span{font-size:11px}
