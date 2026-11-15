@@ -351,7 +351,7 @@ export async function onRequest(context) {
     if (path === "/api/admin/users" && method === "GET") {
       if (!isAdmin(user)) return json({ error: "Доступ только для администратора TOWHELL" }, 403);
       const rows = await db.prepare(`
-        SELECT u.id,u.username,u.email,u.created_at,
+        SELECT u.id,u.username,u.created_at,
           (SELECT COUNT(*) FROM reviews rv WHERE rv.user_id=u.id) AS reviews_count,
           (SELECT COUNT(*) FROM ratings rt WHERE rt.user_id=u.id) AS ratings_count
         FROM users u ORDER BY u.created_at DESC
