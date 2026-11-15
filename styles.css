@@ -42,3 +42,5 @@
 @media(max-width:650px){.form-pair{grid-template-columns:1fr;gap:0}header{overflow-x:auto}nav{flex:0 0 auto}#pendingSubmissions .review{grid-template-columns:1fr}}
 
 .criterion{margin:10px 0}.criterion input{max-width:130px}.form-intro{line-height:1.6;color:var(--muted)}.dialog h3{font-size:14px;margin:24px 0 10px}
+
+.admin-item{grid-template-columns:minmax(0,1fr) auto;align-items:center}.danger{background:transparent;border:1px solid #a64b4b;color:#ff8a8a;padding:10px 14px;font-size:11px}.danger:hover{background:#4a2222}@media(max-width:650px){.admin-item{grid-template-columns:1fr}}
