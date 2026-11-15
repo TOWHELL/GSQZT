@@ -174,8 +174,9 @@ function rateModal(r){
   modal(`<div class="rating-modal">
     <div class="rating-hero">
       <div class="rating-cover">${r.cover&&/^https:\/\//i.test(r.cover)?`<img src="${r.cover}" alt="">`:`<span>${String(r.art||r.artist||"♪").slice(0,1)}</span>`}</div>
-      <div class="rating-track"><small>ОЦЕНКА РЕЛИЗА · ${r.type.toUpperCase()}</small><h2>${r.title}</h2><p>${r.artist} · ${r.year}</p></div>
+      <div class="rating-track"><small>ОЦЕНКА РЕЛИЗА · ${String(r.type||"релиз").toUpperCase()}</small><h2>${escapeHTML(r.title)}</h2><p>${escapeHTML(r.artist)} · ${r.year}</p></div>
     </div>
+    <div class="rating-release-info"><div class="rating-release-genre"><span>ЖАНР</span><b>${escapeHTML(r.genre||"Не указан")}</b></div><div class="rating-release-description"><span>ОПИСАНИЕ</span><p>${escapeHTML(r.description||"Описание не добавлено")}</p></div></div>
     <div class="rating-intro"><div><b>Предварительный итог</b><span>Баллы пересчитываются при каждом изменении</span></div><div class="rating-total"><strong id="ratingScorePreview">—</strong><small>/ 90</small></div></div>
     <div class="rating-progress"><span id="ratingScoreBar"></span></div>
     <div class="rating-criteria-heading"><h3>Критерии оценки</h3><small>КАЖДЫЙ ОТ 0 ДО 10</small></div>
