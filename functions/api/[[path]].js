@@ -83,6 +83,18 @@ function publicUser(user) {
   return { id: user.id, username: user.username, email: user.email };
 }
 
+async function ensureRatingColumns(db) {
+  const ratingCols = await db.prepare("PRAGMA table_info(ratings)").all();
+  const existingRatings = new Set((ratingCols.results || []).map(c => c.name));
+  for (const name of ["sound","composition","lyrics","originality","atmosphere"]) {
+    if (!existingRatings.has(name)) await db.prepare(`ALTER TABLE ratings ADD COLUMN ${name} INTEGER`).run();
+  }
+  const reviewCols = await db.prepare("PRAGMA table_info(reviews)").all();
+  const existingReviews = new Set((reviewCols.results || []).map(c => c.name));
+  for (const [name, definition] of [["title","TEXT NOT NULL DEFAULT ''"],["pros","TEXT NOT NULL DEFAULT ''"],["cons","TEXT NOT NULL DEFAULT ''"],["sound","INTEGER"],["composition","INTEGER"],["lyrics","INTEGER"],["originality","INTEGER"],["atmosphere","INTEGER"]]) {
+    if (!existingReviews.has(name)) await db.prepare(`ALTER TABLE reviews ADD COLUMN ${name} ${definition}`).run();
+  }
+}
 async function ensureSubmissionTables(db) {
   await db.prepare(`
     CREATE TABLE IF NOT EXISTS release_submissions (
@@ -109,6 +121,7 @@ export async function onRequest(context) {
   try {
     await ensureSeeds(db);
     await ensureSubmissionTables(db);
+    await ensureRatingColumns(db);
     if (method === "OPTIONS") return new Response(null, { status: 204 });
     const body = method === "POST" ? await readBody(request) : {};
     const user = await getUser(request, db, env.JWT_SECRET);
