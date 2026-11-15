@@ -27,3 +27,16 @@
 #switch:active {
   transform: scale(0.97);
 }
+
+
+.form-intro{color:#aaa;max-width:620px;line-height:1.8;font-size:13px;margin:0 0 24px}
+.submission-form{max-width:620px;padding:24px;background:var(--panel);border:1px solid var(--line)}
+.form-pair{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.submission-form .field{margin:0 0 18px}
+.submission-form .lime{width:100%}
+#adminNav{color:var(--acid)}
+#pendingSubmissions .review{grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:18px}
+#pendingSubmissions button{padding:10px 14px;border:1px solid var(--line);background:transparent;font-size:11px}
+#pendingSubmissions button.lime{background:var(--acid);color:#171719;border-color:var(--acid)}
+#mySubmissions .review{grid-template-columns:minmax(0,1fr) auto;align-items:center}
+@media(max-width:650px){.form-pair{grid-template-columns:1fr;gap:0}header{overflow-x:auto}nav{flex:0 0 auto}#pendingSubmissions .review{grid-template-columns:1fr}}
