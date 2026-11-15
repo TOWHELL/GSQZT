@@ -182,7 +182,7 @@ function rateModal(r){
     ${criteriaFields("rate_")}
     <div class="rating-formula">Первые четыре критерия формируют базовую оценку. Атмосфера / вайб умножает её от ×1 до ×2,25.</div>
     <button class="lime rating-submit" id="rateGo">${Number(r.rated_by_me)?"Сохранить изменения":"Сохранить оценку"} <span>↗</span></button>
-    ${Number(r.rated_by_me)&&!Number(r.reviewed_by_me)?`<button type="button" class="danger" id="deleteMyRating">Удалить мою оценку</button>`:""}
+    ${Number(r.rated_by_me)&&!Number(r.reviewed_by_me)?`<button type="button" class="danger delete-rating-button" id="deleteMyRating">Удалить мою оценку</button>`:""}
   </div>`);
   if(Number(r.rated_by_me)){for(const key of ["sound","composition","lyrics","originality","atmosphere"]){const field=$("#rate_"+key);if(field)field.value=r["my_"+key]??"";}}
   const updatePreview=()=>{
