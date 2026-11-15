@@ -100,9 +100,10 @@ async function ensureRatingColumns(db) {
   }
   const reviewCols = await db.prepare("PRAGMA table_info(reviews)").all();
   const existingReviews = new Set((reviewCols.results || []).map(c => c.name));
-  for (const [name, definition] of [["title","TEXT NOT NULL DEFAULT ''"],["pros","TEXT NOT NULL DEFAULT ''"],["cons","TEXT NOT NULL DEFAULT ''"],["sound","INTEGER"],["composition","INTEGER"],["lyrics","INTEGER"],["originality","INTEGER"],["atmosphere","INTEGER"]]) {
+  for (const [name, definition] of [["title","TEXT NOT NULL DEFAULT ''"],["pros","TEXT NOT NULL DEFAULT ''"],["cons","TEXT NOT NULL DEFAULT ''"],["sound","INTEGER"],["composition","INTEGER"],["lyrics","INTEGER"],["originality","INTEGER"],["atmosphere","INTEGER"],["release_id","INTEGER"]]) {
     if (!existingReviews.has(name)) await db.prepare(`ALTER TABLE reviews ADD COLUMN ${name} ${definition}`).run();
   }
+  await db.prepare("UPDATE reviews SET release_id=(SELECT r.id FROM releases r WHERE lower(r.title)=lower(reviews.release_title) AND lower(r.artist)=lower(reviews.artist) LIMIT 1) WHERE release_id IS NULL").run();
 }
 async function ensureScoreScale(db) {
   await db.prepare("CREATE TABLE IF NOT EXISTS gsqzt_migrations (id TEXT PRIMARY KEY)").run();
