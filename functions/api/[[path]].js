@@ -268,14 +268,14 @@ export async function onRequest(context) {
       if (!user) return json({ error: "Войдите, чтобы писать рецензии" }, 401);
       const releaseId = Number(body.releaseId);
       const criteria = ["sound","composition","lyrics","originality","atmosphere"].map(k => Number(body[k]));
-      const score = Math.round(criteria.reduce((sum,v)=>sum+v,0)/criteria.length*10)/10;
+      const score = criteria.reduce((sum,v)=>sum+v,0);
       const title = String(body.title || "").trim().slice(0,100);
       const pros = String(body.pros || "").trim().slice(0,1000);
       const cons = String(body.cons || "").trim().slice(0,1000);
       const text = String(body.body || "").trim();
       const release = await db.prepare("SELECT title,artist FROM releases WHERE id = ?").bind(releaseId).first();
-      if (!release || criteria.some(v => !Number.isInteger(v) || v < 1 || v > 10) || !title || text.length < 50 || text.length > 5000)
-        return json({ error: "Проверь релиз, заголовок, пять оценок и длину текста (50–5000)" }, 400);
+      if (!release || criteria.some(v => !Number.isInteger(v) || v < 0 || v > 18) || !title || text.length < 50 || text.length > 5000)
+        return json({ error: "Проверь релиз, заголовок, пять оценок от 0 до 18 и длину текста (50–5000)" }, 400);
       const id = crypto.randomUUID();
       await db.prepare("INSERT INTO reviews (id,user_id,username,release_title,artist,score,body,created_at,title,pros,cons,sound,composition,lyrics,originality,atmosphere) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
         .bind(id, user.id, user.username, release.title, release.artist, score, text, new Date().toISOString(), title, pros, cons, ...criteria).run();
