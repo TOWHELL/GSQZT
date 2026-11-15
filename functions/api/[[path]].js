@@ -158,7 +158,7 @@ export async function onRequest(context) {
     await ensureScoreScale(db);
     await ensureAtmosphereMultiplier(db);
     if (method === "OPTIONS") return new Response(null, { status: 204 });
-    const body = method === "POST" ? await readBody(request) : {};
+    const body = ["POST","PATCH"].includes(method) ? await readBody(request) : {};
     const user = await getUser(request, db, env.JWT_SECRET);
 
     if (path === "/api/health" && method === "GET") return json({ ok: true });
@@ -196,6 +196,15 @@ export async function onRequest(context) {
 
     if (path === "/api/me" && method === "GET")
       return user ? json({ user: publicUser(user) }) : json({ error: "Войдите в аккаунт" }, 401);
+
+    if (path === "/api/me/avatar" && method === "PATCH") {
+      if (!user) return json({ error: "Войдите в аккаунт" }, 401);
+      const avatar = String(body.avatar || "");
+      if (!/^data:image\\/jpeg;base64,[A-Za-z0-9+/]+=*$/.test(avatar) || avatar.length > 700000)
+        return json({ error: "Изображение слишком большое или имеет неподдерживаемый формат" }, 400);
+      await db.prepare("UPDATE users SET avatar=? WHERE id=?").bind(avatar,user.id).run();
+      return json({ ok: true, avatar });
+    }
 
     if (path === "/api/releases" && method === "GET") {
       const releases = await db.prepare(`
