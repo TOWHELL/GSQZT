@@ -221,10 +221,15 @@ export async function onRequest(context) {
       const releases = await db.prepare(`
         SELECT r.*,
           COALESCE(ROUND(AVG(rt.score),1), r.score) AS score,
-          CASE WHEN ? IS NOT NULL AND EXISTS(SELECT 1 FROM ratings mine WHERE mine.release_id=r.id AND mine.user_id=?) THEN 1 ELSE 0 END AS rated_by_me
+          CASE WHEN ? IS NOT NULL AND EXISTS(SELECT 1 FROM ratings mine WHERE mine.release_id=r.id AND mine.user_id=?) THEN 1 ELSE 0 END AS rated_by_me,
+        (SELECT mine.sound FROM ratings mine WHERE mine.release_id=r.id AND mine.user_id=? LIMIT 1) AS my_sound,
+        (SELECT mine.composition FROM ratings mine WHERE mine.release_id=r.id AND mine.user_id=? LIMIT 1) AS my_composition,
+        (SELECT mine.lyrics FROM ratings mine WHERE mine.release_id=r.id AND mine.user_id=? LIMIT 1) AS my_lyrics,
+        (SELECT mine.originality FROM ratings mine WHERE mine.release_id=r.id AND mine.user_id=? LIMIT 1) AS my_originality,
+        (SELECT mine.atmosphere FROM ratings mine WHERE mine.release_id=r.id AND mine.user_id=? LIMIT 1) AS my_atmosphere
         FROM releases r LEFT JOIN ratings rt ON rt.release_id = r.id
         GROUP BY r.id ORDER BY r.id
-      `).bind(user?.id || null,user?.id || null).all();
+      `).bind(user?.id || null,user?.id || null,user?.id || null,user?.id || null,user?.id || null,user?.id || null,user?.id || null).all();
       return json({ releases: releases.results || [] });
     }
 
@@ -300,9 +305,10 @@ export async function onRequest(context) {
         SELECT rv.id, rv.username, u.avatar, rv.release_title AS release, rv.artist, rv.score, rv.title, rv.pros, rv.cons, rv.body, rv.created_at, rv.sound, rv.composition, rv.lyrics, rv.originality, rv.atmosphere,
           (SELECT COUNT(*) FROM review_likes rl WHERE rl.review_id=rv.id) AS likes_count,
           (SELECT COUNT(*) FROM review_comments rc WHERE rc.review_id=rv.id) AS comments_count,
-          CASE WHEN ? IS NOT NULL AND EXISTS(SELECT 1 FROM review_likes rl WHERE rl.review_id=rv.id AND rl.user_id=?) THEN 1 ELSE 0 END AS liked_by_me
+          CASE WHEN ? IS NOT NULL AND EXISTS(SELECT 1 FROM review_likes rl WHERE rl.review_id=rv.id AND rl.user_id=?) THEN 1 ELSE 0 END AS liked_by_me,
+          CASE WHEN ? IS NOT NULL AND rv.user_id=? THEN 1 ELSE 0 END AS can_edit
         FROM reviews rv JOIN users u ON u.id=rv.user_id ORDER BY rv.created_at DESC
-      `).bind(user?.id || null,user?.id || null).all();
+      `).bind(user?.id || null,user?.id || null,user?.id || null,user?.id || null).all();
       return json({ reviews: reviews.results || [] });
     }
 
@@ -455,7 +461,7 @@ export async function onRequest(context) {
     }
 
     const ratingMatch = path.match(/^\/api\/releases\/(\d+)\/rating$/);
-    if (ratingMatch && method === "POST") {
+    if (ratingMatch && (method === "POST" || method === "PATCH")) {
       if (!user) return json({ error: "Войдите, чтобы оценивать" }, 401);
       const releaseId = Number(ratingMatch[1]);
       const criteria = ["sound","composition","lyrics","originality","atmosphere"].map(k => Number(body[k]));
@@ -464,9 +470,28 @@ export async function onRequest(context) {
       const release = await db.prepare("SELECT id FROM releases WHERE id = ?").bind(releaseId).first();
       if (!release) return json({ error: "Релиз не найден" }, 404);
       const existingRating = await db.prepare("SELECT 1 AS found FROM ratings WHERE user_id=? AND release_id=?").bind(user.id,releaseId).first();
-      if (existingRating) return json({ error: "Ты уже оценил этот релиз. Повторная оценка запрещена." }, 409);
-      await db.prepare("INSERT INTO ratings (user_id,release_id,score,sound,composition,lyrics,originality,atmosphere) VALUES (?,?,?,?,?,?,?,?)")
-        .bind(user.id, releaseId, score, ...criteria).run();
+      if (method === "POST") {
+        if (existingRating) return json({ error: "Ты уже оценил этот релиз. Используй изменение оценки." }, 409);
+        await db.prepare("INSERT INTO ratings (user_id,release_id,score,sound,composition,lyrics,originality,atmosphere) VALUES (?,?,?,?,?,?,?,?)")
+          .bind(user.id, releaseId, score, ...criteria).run();
+      } else {
+        if (!existingRating) return json({ error: "Сначала поставь оценку этому релизу." }, 404);
+        await db.prepare("UPDATE ratings SET score=?,sound=?,composition=?,lyrics=?,originality=?,atmosphere=? WHERE user_id=? AND release_id=?")
+          .bind(score,...criteria,user.id,releaseId).run();
+      }
+      return json({ ok: true });
+    }
+
+    const editReviewMatch = path.match(/^\/api\/reviews\/([a-f0-9-]+)$/i);
+    if (editReviewMatch && method === "PATCH") {
+      if (!user) return json({ error: "Войдите, чтобы дополнять рецензии" }, 401);
+      const addition = String(body.addition || "").trim();
+      if (!addition || addition.length > 5000) return json({ error: "Дополнение должно содержать от 1 до 5000 символов" }, 400);
+      const existing = await db.prepare("SELECT body FROM reviews WHERE id=? AND user_id=?").bind(editReviewMatch[1],user.id).first();
+      if (!existing) return json({ error: "Рецензия не найдена или принадлежит другому пользователю" }, 404);
+      const combined = String(existing.body || "") + "\n\nДополнение:\n" + addition;
+      if (combined.length > 10000) return json({ error: "Общий текст рецензии не должен превышать 10000 символов" }, 400);
+      await db.prepare("UPDATE reviews SET body=? WHERE id=? AND user_id=?").bind(combined,editReviewMatch[1],user.id).run();
       return json({ ok: true });
     }
 
