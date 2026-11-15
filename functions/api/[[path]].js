@@ -110,6 +110,24 @@ async function ensureScoreScale(db) {
   await db.prepare("UPDATE releases SET score=MIN(90,MAX(0,ROUND(score*9,1))) WHERE score > 0 AND score <= 10").run();
   await db.prepare("INSERT INTO gsqzt_migrations (id) VALUES (?)").bind("score-scale-90-v1").run();
 }
+async function ensureAtmosphereMultiplier(db) {
+  await db.prepare("CREATE TABLE IF NOT EXISTS gsqzt_migrations (id TEXT PRIMARY KEY)").run();
+  const migrationId = "atmosphere-multiplier-v2";
+  const done = await db.prepare("SELECT id FROM gsqzt_migrations WHERE id = ?").bind(migrationId).first();
+  if (done) return;
+  for (const table of ["ratings", "reviews"]) {
+    await db.prepare(`UPDATE ${table} SET
+      sound=CASE WHEN sound IS NULL THEN NULL ELSE MIN(10,MAX(0,ROUND(sound*10.0/18))) END,
+      composition=CASE WHEN composition IS NULL THEN NULL ELSE MIN(10,MAX(0,ROUND(composition*10.0/18))) END,
+      lyrics=CASE WHEN lyrics IS NULL THEN NULL ELSE MIN(10,MAX(0,ROUND(lyrics*10.0/18))) END,
+      originality=CASE WHEN originality IS NULL THEN NULL ELSE MIN(10,MAX(0,ROUND(originality*10.0/18))) END,
+      atmosphere=CASE WHEN atmosphere IS NULL THEN NULL ELSE MIN(10,MAX(0,ROUND(atmosphere*10.0/18))) END`).run();
+    await db.prepare(`UPDATE ${table} SET score=ROUND(
+      (COALESCE(sound,0)+COALESCE(composition,0)+COALESCE(lyrics,0)+COALESCE(originality,0)) *
+      (1+COALESCE(atmosphere,0)*0.125),1)`).run();
+  }
+  await db.prepare("INSERT INTO gsqzt_migrations (id) VALUES (?)").bind(migrationId).run();
+}
 async function ensureSubmissionTables(db) {
   await db.prepare(`
     CREATE TABLE IF NOT EXISTS release_submissions (
@@ -138,6 +156,7 @@ export async function onRequest(context) {
     await ensureSubmissionTables(db);
     await ensureRatingColumns(db);
     await ensureScoreScale(db);
+    await ensureAtmosphereMultiplier(db);
     if (method === "OPTIONS") return new Response(null, { status: 204 });
     const body = method === "POST" ? await readBody(request) : {};
     const user = await getUser(request, db, env.JWT_SECRET);
@@ -253,8 +272,8 @@ export async function onRequest(context) {
       if (!user) return json({ error: "Войдите, чтобы оценивать" }, 401);
       const releaseId = Number(ratingMatch[1]);
       const criteria = ["sound","composition","lyrics","originality","atmosphere"].map(k => Number(body[k]));
-      if (criteria.some(v => !Number.isInteger(v) || v < 0 || v > 18)) return json({ error: "Каждый критерий должен быть от 0 до 18" }, 400);
-      const score = criteria.reduce((sum,v)=>sum+v,0);
+      if (criteria.some(v => !Number.isInteger(v) || v < 0 || v > 10)) return json({ error: "Каждый критерий должен быть от 0 до 10" }, 400);
+      const score = (criteria[0]+criteria[1]+criteria[2]+criteria[3])*(1+criteria[4]*0.125);
       const release = await db.prepare("SELECT id FROM releases WHERE id = ?").bind(releaseId).first();
       if (!release) return json({ error: "Релиз не найден" }, 404);
       await db.prepare(`
@@ -268,14 +287,14 @@ export async function onRequest(context) {
       if (!user) return json({ error: "Войдите, чтобы писать рецензии" }, 401);
       const releaseId = Number(body.releaseId);
       const criteria = ["sound","composition","lyrics","originality","atmosphere"].map(k => Number(body[k]));
-      const score = criteria.reduce((sum,v)=>sum+v,0);
+      const score = (criteria[0]+criteria[1]+criteria[2]+criteria[3])*(1+criteria[4]*0.125);
       const title = String(body.title || "").trim().slice(0,100);
       const pros = String(body.pros || "").trim().slice(0,1000);
       const cons = String(body.cons || "").trim().slice(0,1000);
       const text = String(body.body || "").trim();
       const release = await db.prepare("SELECT title,artist FROM releases WHERE id = ?").bind(releaseId).first();
-      if (!release || criteria.some(v => !Number.isInteger(v) || v < 0 || v > 18) || !title || text.length < 50 || text.length > 5000)
-        return json({ error: "Проверь релиз, заголовок, пять оценок от 0 до 18 и длину текста (50–5000)" }, 400);
+      if (!release || criteria.some(v => !Number.isInteger(v) || v < 0 || v > 10) || !title || text.length < 50 || text.length > 5000)
+        return json({ error: "Проверь релиз, заголовок, пять оценок от 0 до 10 и длину текста (50–5000)" }, 400);
       const id = crypto.randomUUID();
       await db.prepare("INSERT INTO reviews (id,user_id,username,release_title,artist,score,body,created_at,title,pros,cons,sound,composition,lyrics,originality,atmosphere) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
         .bind(id, user.id, user.username, release.title, release.artist, score, text, new Date().toISOString(), title, pros, cons, ...criteria).run();
