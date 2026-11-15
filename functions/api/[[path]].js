@@ -83,6 +83,19 @@ function publicUser(user) {
   return { id: user.id, username: user.username, email: user.email };
 }
 
+async function ensureSubmissionTables(db) {
+  await db.prepare(`
+    CREATE TABLE IF NOT EXISTS release_submissions (
+      id TEXT PRIMARY KEY, submitter_user_id TEXT NOT NULL REFERENCES users(id),
+      title TEXT NOT NULL, artist TEXT NOT NULL, type TEXT NOT NULL, year INTEGER NOT NULL,
+      genre TEXT NOT NULL, cover_url TEXT NOT NULL, description TEXT NOT NULL, listening_url TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending', created_at TEXT NOT NULL, reviewed_at TEXT,
+      reviewed_by TEXT, rejection_reason TEXT
+    )
+  `).run();
+}
+function isAdmin(user) { return !!user && user.username.toLowerCase() === "towhell"; }
+
 export async function onRequest(context) {
   const { request, env } = context;
   if (!env.GSQZT_DB) return json({ error: "База данных GSQZT не подключена. Проверь D1 binding с именем GSQZT_DB." }, 503);
@@ -94,7 +107,7 @@ export async function onRequest(context) {
   const db = env.GSQZT_DB;
 
   try {
-    await ensureSeeds(db);
+    await ensureSeeds(db);\n    await ensureSubmissionTables(db);
     if (method === "OPTIONS") return new Response(null, { status: 204 });
     const body = method === "POST" ? await readBody(request) : {};
     const user = await getUser(request, db, env.JWT_SECRET);
@@ -151,6 +164,58 @@ export async function onRequest(context) {
         FROM reviews rv ORDER BY rv.created_at DESC
       `).all();
       return json({ reviews: reviews.results || [] });
+    }
+
+
+    if (path === "/api/submissions" && method === "POST") {
+      if (!user) return json({ error: "Войдите, чтобы предложить релиз" }, 401);
+      const title = String(body.title || "").trim(), artist = String(body.artist || "").trim();
+      const type = String(body.type || "").trim(), year = Number(body.year);
+      const genre = String(body.genre || "").trim(), coverUrl = String(body.cover_url || "").trim();
+      const description = String(body.description || "").trim(), listeningUrl = String(body.listening_url || "").trim();
+      if (!title || title.length > 100 || !artist || artist.length > 100 ||
+          !["Альбом","Сингл"].includes(type) || !Number.isInteger(year) || year < 1900 || year > 2100 ||
+          genre.length > 50 || description.length > 2000 ||
+          (coverUrl && !/^https:\/\//i.test(coverUrl)) || (listeningUrl && !/^https:\/\//i.test(listeningUrl)))
+        return json({ error: "Проверь поля. Ссылки должны начинаться с https://" }, 400);
+      const id = crypto.randomUUID();
+      await db.prepare(`INSERT INTO release_submissions
+        (id,submitter_user_id,title,artist,type,year,genre,cover_url,description,listening_url,status,created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?, 'pending', ?)`)
+        .bind(id,user.id,title,artist,type,year,genre,coverUrl,description,listeningUrl,new Date().toISOString()).run();
+      return json({ ok: true, id }, 201);
+    }
+    if (path === "/api/submissions/mine" && method === "GET") {
+      if (!user) return json({ error: "Войдите в аккаунт" }, 401);
+      const rows = await db.prepare("SELECT id,title,artist,type,year,genre,status,created_at,rejection_reason FROM release_submissions WHERE submitter_user_id = ? ORDER BY created_at DESC").bind(user.id).all();
+      return json({ submissions: rows.results || [] });
+    }
+    if (path === "/api/admin/submissions" && method === "GET") {
+      if (!isAdmin(user)) return json({ error: "Доступ только для администратора TOWHELL" }, 403);
+      const rows = await db.prepare("SELECT s.*, u.username AS submitter FROM release_submissions s JOIN users u ON u.id=s.submitter_user_id WHERE s.status='pending' ORDER BY s.created_at ASC").all();
+      return json({ submissions: rows.results || [] });
+    }
+    const reviewSubmissionMatch = path.match(/^\/api\/admin\/submissions\/([a-f0-9-]+)\/(approve|reject)$/i);
+    if (reviewSubmissionMatch && method === "POST") {
+      if (!isAdmin(user)) return json({ error: "Доступ только для администратора TOWHELL" }, 403);
+      const submissionId = reviewSubmissionMatch[1], action = reviewSubmissionMatch[2].toLowerCase();
+      const submission = await db.prepare("SELECT * FROM release_submissions WHERE id=? AND status='pending'").bind(submissionId).first();
+      if (!submission) return json({ error: "Заявка не найдена или уже рассмотрена" }, 404);
+      if (action === "reject") {
+        await db.prepare("UPDATE release_submissions SET status='rejected',reviewed_at=?,reviewed_by=?,rejection_reason=? WHERE id=?")
+          .bind(new Date().toISOString(),user.id,String(body.reason || "").trim().slice(0,500),submissionId).run();
+        return json({ ok: true });
+      }
+      const next = await db.prepare("SELECT COALESCE(MAX(id),0)+1 AS id FROM releases").first();
+      const art = (submission.artist || submission.title).slice(0,1).toUpperCase();
+      await db.batch([
+        db.prepare("INSERT INTO releases (id,title,artist,type,year,tag,art,cover,description,score) VALUES (?,?,?,?,?,?,?,?,?,?)")
+          .bind(next.id,submission.title,submission.artist,submission.type,submission.year,submission.genre || "COMMUNITY",art,
+            "linear-gradient(135deg,#d4fa45,#53652a)",submission.description + (submission.listening_url ? "\\n\\nСлушать: " + submission.listening_url : ""),0),
+        db.prepare("UPDATE release_submissions SET status='approved',reviewed_at=?,reviewed_by=? WHERE id=?")
+          .bind(new Date().toISOString(),user.id,submissionId)
+      ]);
+      return json({ ok: true, release_id: next.id });
     }
 
     const ratingMatch = path.match(/^\/api\/releases\/(\d+)\/rating$/);
