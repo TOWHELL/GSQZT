@@ -143,6 +143,14 @@ async function ensureAtmosphereMultiplier(db) {
   }
   await db.prepare("INSERT INTO gsqzt_migrations (id) VALUES (?)").bind(migrationId).run();
 }
+async function ensureCommunityFeatures(db) {
+  await db.prepare("CREATE TABLE IF NOT EXISTS user_follows (follower_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, followed_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, created_at TEXT NOT NULL, PRIMARY KEY(follower_user_id,followed_user_id))").run();
+  const userCols = await db.prepare("PRAGMA table_info(users)").all();
+  if (!(userCols.results || []).some(c => c.name === "pinned_review_id")) await db.prepare("ALTER TABLE users ADD COLUMN pinned_review_id TEXT").run();
+  await db.prepare("CREATE TABLE IF NOT EXISTS review_comments (id TEXT PRIMARY KEY, review_id TEXT NOT NULL REFERENCES reviews(id) ON DELETE CASCADE, user_id TEXT NOT NULL REFERENCES users(id), username TEXT NOT NULL, body TEXT NOT NULL, created_at TEXT NOT NULL)").run();
+  const commentCols = await db.prepare("PRAGMA table_info(review_comments)").all();
+  if (!(commentCols.results || []).some(c => c.name === "parent_comment_id")) await db.prepare("ALTER TABLE review_comments ADD COLUMN parent_comment_id TEXT").run();
+}
 async function ensureSubmissionTables(db) {
   await db.prepare(`
     CREATE TABLE IF NOT EXISTS release_submissions (
@@ -172,6 +180,7 @@ export async function onRequest(context) {
     await ensureReleaseListeningColumn(db);
     await ensureReleaseGenreColumn(db);
     await ensureSubmissionTables(db);
+    await ensureCommunityFeatures(db);
     await ensureRatingColumns(db);
     await ensureScoreScale(db);
     await ensureAtmosphereMultiplier(db);
@@ -305,7 +314,7 @@ export async function onRequest(context) {
     if (reviewCommentsMatch && method === "GET") {
       const reviewExists = await db.prepare("SELECT id FROM reviews WHERE id=?").bind(reviewCommentsMatch[1]).first();
       if (!reviewExists) return json({ error: "Рецензия не найдена" }, 404);
-      const rows = await db.prepare("SELECT c.id,c.username,c.body,c.created_at,u.avatar,CASE WHEN (? IS NOT NULL AND c.user_id=?) OR ?=1 THEN 1 ELSE 0 END AS can_delete FROM review_comments c JOIN users u ON u.id=c.user_id WHERE c.review_id=? ORDER BY c.created_at ASC")
+      const rows = await db.prepare("SELECT c.id,c.parent_comment_id,c.username,c.body,c.created_at,u.avatar,CASE WHEN (? IS NOT NULL AND c.user_id=?) OR ?=1 THEN 1 ELSE 0 END AS can_delete FROM review_comments c JOIN users u ON u.id=c.user_id WHERE c.review_id=? ORDER BY c.created_at ASC")
         .bind(user?.id || null,user?.id || null,isAdmin(user)?1:0,reviewCommentsMatch[1]).all();
       return json({ comments: rows.results || [] });
     }
@@ -315,10 +324,15 @@ export async function onRequest(context) {
       const reviewExists = await db.prepare("SELECT id FROM reviews WHERE id=?").bind(reviewCommentsMatch[1]).first();
       if (!reviewExists) return json({ error: "Рецензия не найдена" }, 404);
       if (!bodyText || bodyText.length > 1000) return json({ error: "Комментарий должен содержать от 1 до 1000 символов" }, 400);
+      const parentId = body.parentCommentId ? String(body.parentCommentId) : null;
+      if (parentId) {
+        const parent = await db.prepare("SELECT id FROM review_comments WHERE id=? AND review_id=?").bind(parentId,reviewCommentsMatch[1]).first();
+        if (!parent) return json({ error: "Комментарий для ответа не найден" }, 404);
+      }
       const id = crypto.randomUUID();
       const reviewOwner = await db.prepare("SELECT user_id FROM reviews WHERE id=?").bind(reviewCommentsMatch[1]).first();
-      await db.prepare("INSERT INTO review_comments (id,review_id,user_id,username,body,created_at) VALUES (?,?,?,?,?,?)")
-        .bind(id,reviewCommentsMatch[1],user.id,user.username,bodyText,new Date().toISOString()).run();
+      await db.prepare("INSERT INTO review_comments (id,review_id,user_id,username,body,created_at,parent_comment_id) VALUES (?,?,?,?,?,?,?)")
+        .bind(id,reviewCommentsMatch[1],user.id,user.username,bodyText,new Date().toISOString(),parentId).run();
       if (reviewOwner?.user_id !== user.id) await db.prepare("INSERT INTO notifications (id,recipient_user_id,actor_user_id,actor_username,type,review_id,created_at) VALUES (?,?,?,?,?,?,?)").bind(crypto.randomUUID(),reviewOwner.user_id,user.id,user.username,"comment",reviewCommentsMatch[1],new Date().toISOString()).run();
       return json({ ok: true, id }, 201);
     }
@@ -351,14 +365,42 @@ export async function onRequest(context) {
       return json({ users: rows.results || [] });
     }
 
+    if (path === "/api/me/pinned-review" && method === "PATCH") {
+      if (!user) return json({ error: "Войдите в аккаунт" }, 401);
+      const reviewId = body.reviewId ? String(body.reviewId) : null;
+      if (reviewId) {
+        const owned = await db.prepare("SELECT id FROM reviews WHERE id=? AND user_id=?").bind(reviewId,user.id).first();
+        if (!owned) return json({ error: "Можно закрепить только свою рецензию" }, 403);
+      }
+      await db.prepare("UPDATE users SET pinned_review_id=? WHERE id=?").bind(reviewId,user.id).run();
+      return json({ ok: true, pinned_review_id: reviewId });
+    }
+    const followMatch = path.match(/^\/api\/users\/([^/]+)\/follow$/);
+    if (followMatch && (method === "POST" || method === "DELETE")) {
+      if (!user) return json({ error: "Войдите, чтобы подписываться" }, 401);
+      const target = await db.prepare("SELECT id,username FROM users WHERE username=? COLLATE NOCASE").bind(decodeURIComponent(followMatch[1])).first();
+      if (!target) return json({ error: "Пользователь не найден" }, 404);
+      if (target.id === user.id) return json({ error: "Нельзя подписаться на самого себя" }, 400);
+      if (method === "POST") await db.prepare("INSERT OR IGNORE INTO user_follows (follower_user_id,followed_user_id,created_at) VALUES (?,?,?)").bind(user.id,target.id,new Date().toISOString()).run();
+      else await db.prepare("DELETE FROM user_follows WHERE follower_user_id=? AND followed_user_id=?").bind(user.id,target.id).run();
+      return json({ ok: true, following: method === "POST" });
+    }
+    if (path === "/api/following/reviews" && method === "GET") {
+      if (!user) return json({ error: "Войдите, чтобы смотреть подписки" }, 401);
+      const rows = await db.prepare("SELECT rv.id,rv.release_id,rv.username,u.avatar,rv.release_title AS release,rv.artist,rv.score,rv.title,rv.pros,rv.cons,rv.body,rv.created_at,rv.sound,rv.composition,rv.lyrics,rv.originality,rv.atmosphere,(SELECT COUNT(*) FROM review_likes rl WHERE rl.review_id=rv.id) AS likes_count,(SELECT COUNT(*) FROM review_comments rc WHERE rc.review_id=rv.id) AS comments_count,CASE WHEN EXISTS(SELECT 1 FROM review_likes rl WHERE rl.review_id=rv.id AND rl.user_id=?) THEN 1 ELSE 0 END AS liked_by_me,0 AS can_edit FROM reviews rv JOIN users u ON u.id=rv.user_id JOIN user_follows uf ON uf.followed_user_id=rv.user_id WHERE uf.follower_user_id=? ORDER BY rv.created_at DESC LIMIT 100").bind(user.id,user.id).all();
+      return json({ reviews: rows.results || [] });
+    }
     const profileMatch = path.match(/^\/api\/users\/([^/]+)$/);
     if (profileMatch && method === "GET") {
       const username = decodeURIComponent(profileMatch[1]);
-      const profile = await db.prepare("SELECT id,username,created_at,avatar FROM users WHERE username=? COLLATE NOCASE").bind(username).first();
+      const profile = await db.prepare("SELECT id,username,created_at,avatar,pinned_review_id FROM users WHERE username=? COLLATE NOCASE").bind(username).first();
       if (!profile) return json({ error: "Пользователь не найден" }, 404);
       const stats = await db.prepare("SELECT (SELECT COUNT(*) FROM reviews WHERE user_id=?) AS reviews_count,(SELECT COUNT(*) FROM ratings WHERE user_id=?) AS ratings_count,(SELECT ROUND(AVG(score),1) FROM reviews WHERE user_id=?) AS average_score").bind(profile.id,profile.id,profile.id).first();
-      const items = await db.prepare("SELECT id,release_id,username,release_title AS release,artist,score,title,pros,cons,body,created_at,sound,composition,lyrics,originality,atmosphere,(SELECT COUNT(*) FROM review_likes rl WHERE rl.review_id=reviews.id) AS likes_count,(SELECT COUNT(*) FROM review_comments rc WHERE rc.review_id=reviews.id) AS comments_count, CASE WHEN ? IS NOT NULL AND reviews.user_id=? THEN 1 ELSE 0 END AS can_edit FROM reviews WHERE user_id=? ORDER BY created_at DESC").bind(user?.id || null,user?.id || null,profile.id).all();
-      return json({ profile: { username: profile.username, created_at: profile.created_at, avatar: profile.avatar || null, reviews_count: stats.reviews_count || 0, ratings_count: stats.ratings_count || 0, average_score: stats.average_score, reviews: items.results || [] } });
+      const items = await db.prepare("SELECT id,release_id,username,release_title AS release,artist,score,title,pros,cons,body,created_at,sound,composition,lyrics,originality,atmosphere,(SELECT COUNT(*) FROM review_likes rl WHERE rl.review_id=reviews.id) AS likes_count,(SELECT COUNT(*) FROM review_comments rc WHERE rc.review_id=reviews.id) AS comments_count, CASE WHEN ? IS NOT NULL AND reviews.user_id=? THEN 1 ELSE 0 END AS can_edit, CASE WHEN id=? THEN 1 ELSE 0 END AS is_pinned FROM reviews WHERE user_id=? ORDER BY CASE WHEN id=? THEN 0 ELSE 1 END,created_at DESC").bind(user?.id || null,user?.id || null,profile.pinned_review_id || "",profile.id,profile.pinned_review_id || "").all();
+      const social = await db.prepare("SELECT (SELECT COUNT(*) FROM user_follows WHERE followed_user_id=?) AS followers_count,(SELECT COUNT(*) FROM user_follows WHERE follower_user_id=?) AS following_count,CASE WHEN ? IS NOT NULL AND EXISTS(SELECT 1 FROM user_follows WHERE follower_user_id=? AND followed_user_id=?) THEN 1 ELSE 0 END AS is_following").bind(profile.id,profile.id,user?.id || null,user?.id || null,profile.id).first();
+      const favoriteGenre = await db.prepare("SELECT r.genre,COUNT(*) AS amount FROM ratings rt JOIN releases r ON r.id=rt.release_id WHERE rt.user_id=? AND COALESCE(r.genre,'')<>'' GROUP BY r.genre ORDER BY amount DESC,r.genre LIMIT 1").bind(profile.id).first();
+      const listened = await db.prepare("SELECT COUNT(DISTINCT release_id) AS count FROM ratings WHERE user_id=?").bind(profile.id).first();
+      return json({ profile: { username: profile.username, created_at: profile.created_at, avatar: profile.avatar || null, pinned_review_id: profile.pinned_review_id || null, reviews_count: stats.reviews_count || 0, ratings_count: stats.ratings_count || 0, average_score: stats.average_score, favorite_genre: favoriteGenre?.genre || null, listened_count: listened?.count || 0, followers_count: social?.followers_count || 0, following_count: social?.following_count || 0, is_following: !!social?.is_following, reviews: items.results || [] } });
     }
 
 
