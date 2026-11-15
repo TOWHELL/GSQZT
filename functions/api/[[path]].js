@@ -221,15 +221,16 @@ export async function onRequest(context) {
       const releases = await db.prepare(`
         SELECT r.*,
           COALESCE(ROUND(AVG(rt.score),1), r.score) AS score,
-          CASE WHEN ? IS NOT NULL AND EXISTS(SELECT 1 FROM ratings mine WHERE mine.release_id=r.id AND mine.user_id=?) THEN 1 ELSE 0 END AS rated_by_me,
-        (SELECT mine.sound FROM ratings mine WHERE mine.release_id=r.id AND mine.user_id=? LIMIT 1) AS my_sound,
-        (SELECT mine.composition FROM ratings mine WHERE mine.release_id=r.id AND mine.user_id=? LIMIT 1) AS my_composition,
-        (SELECT mine.lyrics FROM ratings mine WHERE mine.release_id=r.id AND mine.user_id=? LIMIT 1) AS my_lyrics,
-        (SELECT mine.originality FROM ratings mine WHERE mine.release_id=r.id AND mine.user_id=? LIMIT 1) AS my_originality,
-        (SELECT mine.atmosphere FROM ratings mine WHERE mine.release_id=r.id AND mine.user_id=? LIMIT 1) AS my_atmosphere
+          CASE WHEN EXISTS(SELECT 1 FROM ratings mine WHERE mine.release_id=r.id AND mine.user_id=?)
+          OR EXISTS(SELECT 1 FROM reviews mineReview WHERE mineReview.release_id=r.id AND mineReview.user_id=?) THEN 1 ELSE 0 END AS rated_by_me,
+        COALESCE((SELECT mine.sound FROM ratings mine WHERE mine.release_id=r.id AND mine.user_id=? LIMIT 1),(SELECT mineReview.sound FROM reviews mineReview WHERE mineReview.release_id=r.id AND mineReview.user_id=? ORDER BY mineReview.created_at DESC LIMIT 1)) AS my_sound,
+        COALESCE((SELECT mine.composition FROM ratings mine WHERE mine.release_id=r.id AND mine.user_id=? LIMIT 1),(SELECT mineReview.composition FROM reviews mineReview WHERE mineReview.release_id=r.id AND mineReview.user_id=? ORDER BY mineReview.created_at DESC LIMIT 1)) AS my_composition,
+        COALESCE((SELECT mine.lyrics FROM ratings mine WHERE mine.release_id=r.id AND mine.user_id=? LIMIT 1),(SELECT mineReview.lyrics FROM reviews mineReview WHERE mineReview.release_id=r.id AND mineReview.user_id=? ORDER BY mineReview.created_at DESC LIMIT 1)) AS my_lyrics,
+        COALESCE((SELECT mine.originality FROM ratings mine WHERE mine.release_id=r.id AND mine.user_id=? LIMIT 1),(SELECT mineReview.originality FROM reviews mineReview WHERE mineReview.release_id=r.id AND mineReview.user_id=? ORDER BY mineReview.created_at DESC LIMIT 1)) AS my_originality,
+        COALESCE((SELECT mine.atmosphere FROM ratings mine WHERE mine.release_id=r.id AND mine.user_id=? LIMIT 1),(SELECT mineReview.atmosphere FROM reviews mineReview WHERE mineReview.release_id=r.id AND mineReview.user_id=? ORDER BY mineReview.created_at DESC LIMIT 1)) AS my_atmosphere
         FROM releases r LEFT JOIN ratings rt ON rt.release_id = r.id
         GROUP BY r.id ORDER BY r.id
-      `).bind(user?.id || null,user?.id || null,user?.id || null,user?.id || null,user?.id || null,user?.id || null,user?.id || null).all();
+      `).bind(user?.id || null,user?.id || null,user?.id || null,user?.id || null,user?.id || null,user?.id || null,user?.id || null,user?.id || null,user?.id || null,user?.id || null,user?.id || null,user?.id || null).all();
       return json({ releases: releases.results || [] });
     }
 
@@ -470,8 +471,9 @@ export async function onRequest(context) {
       const release = await db.prepare("SELECT id FROM releases WHERE id = ?").bind(releaseId).first();
       if (!release) return json({ error: "Релиз не найден" }, 404);
       const existingRating = await db.prepare("SELECT 1 AS found FROM ratings WHERE user_id=? AND release_id=?").bind(user.id,releaseId).first();
+      const existingReview = await db.prepare("SELECT 1 AS found FROM reviews WHERE user_id=? AND release_id=? LIMIT 1").bind(user.id,releaseId).first();
       if (method === "POST") {
-        if (existingRating) return json({ error: "Ты уже оценил этот релиз. Используй изменение оценки." }, 409);
+        if (existingRating || existingReview) return json({ error: "Ты уже оценил этот релиз в оценке или рецензии. Измени существующую оценку." }, 409);
         await db.prepare("INSERT INTO ratings (user_id,release_id,score,sound,composition,lyrics,originality,atmosphere) VALUES (?,?,?,?,?,?,?,?)")
           .bind(user.id, releaseId, score, ...criteria).run();
       } else {
@@ -508,8 +510,17 @@ export async function onRequest(context) {
       if (!release || criteria.some(v => !Number.isInteger(v) || v < 0 || v > 10) || !title || text.length < 50 || text.length > 5000)
         return json({ error: "Проверь релиз, заголовок, пять оценок от 0 до 10 и длину текста (50–5000)" }, 400);
       const id = crypto.randomUUID();
-      await db.prepare("INSERT INTO reviews (id,user_id,username,release_title,artist,score,body,created_at,title,pros,cons,sound,composition,lyrics,originality,atmosphere) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
-        .bind(id, user.id, user.username, release.title, release.artist, score, text, new Date().toISOString(), title, pros, cons, ...criteria).run();
+      const createdAt = new Date().toISOString();
+      const existingRating = await db.prepare("SELECT 1 AS found FROM ratings WHERE user_id=? AND release_id=?").bind(user.id,releaseId).first();
+      await db.prepare("INSERT INTO reviews (id,user_id,release_id,username,release_title,artist,score,body,created_at,title,pros,cons,sound,composition,lyrics,originality,atmosphere) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+        .bind(id, user.id, releaseId, user.username, release.title, release.artist, score, text, createdAt, title, pros, cons, ...criteria).run();
+      if (existingRating) {
+        await db.prepare("UPDATE ratings SET score=?,sound=?,composition=?,lyrics=?,originality=?,atmosphere=? WHERE user_id=? AND release_id=?")
+          .bind(score,...criteria,user.id,releaseId).run();
+      } else {
+        await db.prepare("INSERT INTO ratings (user_id,release_id,score,sound,composition,lyrics,originality,atmosphere) VALUES (?,?,?,?,?,?,?,?)")
+          .bind(user.id,releaseId,score,...criteria).run();
+      }
       return json({ ok: true }, 201);
     }
 
