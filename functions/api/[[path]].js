@@ -324,8 +324,8 @@ export async function onRequest(context) {
     if (reviewCommentsMatch && method === "GET") {
       const reviewExists = await db.prepare("SELECT id FROM reviews WHERE id=?").bind(reviewCommentsMatch[1]).first();
       if (!reviewExists) return json({ error: "Рецензия не найдена" }, 404);
-      const rows = await db.prepare("SELECT c.id,c.parent_comment_id,c.username,c.body,c.created_at,u.avatar,CASE WHEN (? IS NOT NULL AND c.user_id=?) OR ?=1 THEN 1 ELSE 0 END AS can_delete FROM review_comments c JOIN users u ON u.id=c.user_id WHERE c.review_id=? ORDER BY c.created_at ASC")
-        .bind(user?.id || null,user?.id || null,isAdmin(user)?1:0,reviewCommentsMatch[1]).all();
+      const rows = await db.prepare("SELECT c.id,c.parent_comment_id,c.username,c.body,c.created_at,u.avatar,CASE WHEN (? IS NOT NULL AND c.user_id=?) OR ?=1 THEN 1 ELSE 0 END AS can_delete,CASE WHEN ?=1 THEN 1 ELSE 0 END AS can_admin_delete FROM review_comments c JOIN users u ON u.id=c.user_id WHERE c.review_id=? ORDER BY c.created_at ASC")
+        .bind(user?.id || null,user?.id || null,isAdmin(user)?1:0,isAdmin(user)?1:0,reviewCommentsMatch[1]).all();
       return json({ comments: rows.results || [] });
     }
     if (reviewCommentsMatch && method === "POST") {
