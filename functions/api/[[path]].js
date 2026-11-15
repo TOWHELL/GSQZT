@@ -620,8 +620,8 @@ export async function onRequest(context) {
       const next = await db.prepare("SELECT COALESCE(MAX(id),0)+1 AS id FROM releases").first();
       const art = (submission.artist || submission.title).slice(0,1).toUpperCase();
       await db.batch([
-        db.prepare("INSERT INTO releases (id,title,artist,type,year,tag,art,cover,description,score,listening_url) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
-          .bind(next.id,submission.title,submission.artist,submission.type,submission.year,submission.genre || "COMMUNITY",art,
+        db.prepare("INSERT INTO releases (id,title,artist,type,year,tag,genre,art,cover,description,score,listening_url) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
+          .bind(next.id,submission.title,submission.artist,submission.type,submission.year,submission.genre || "COMMUNITY",submission.genre || "COMMUNITY",art,
             submission.cover_url || "linear-gradient(135deg,#d4fa45,#53652a)",submission.description,0,submission.listening_url || ""),
         db.prepare("UPDATE release_submissions SET status='approved',reviewed_at=?,reviewed_by=? WHERE id=?")
           .bind(new Date().toISOString(),user.id,submissionId)
