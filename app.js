@@ -65,7 +65,13 @@ function renderTop(){
 
 function renderNotifications(){
  const box=$("#notificationList");if(!box)return;
- box.innerHTML=notifications.length?notifications.map(n=>{const isLike=n.type==="like",date=n.created_at?new Date(n.created_at).toLocaleString("ru-RU",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):"";return '<button type="button" class="notification-item '+(n.read_at?'':'unread')+'" data-notification-open="'+escapeHTML(n.id)+'" data-notification-review="'+escapeHTML(n.review_id)+'"><span class="notification-icon">'+(isLike?'♥':'💬')+'</span><span class="notification-copy"><b>'+escapeHTML(n.actor_username)+'</b> '+(isLike?'понравилась твоя рецензия':'прокомментировал твою рецензию')+'<strong>'+escapeHTML(n.title||n.release_title||'Рецензия')+' — '+escapeHTML(n.artist||'')+'</strong><small>'+escapeHTML(date)+'</small></span><i>'+(n.read_at?'':'●')+'</i></button>';}).join(""):'<p class="notifications-empty">Пока нет уведомлений. Когда кто-то поставит лайк или прокомментирует твою рецензию, здесь появится сообщение.</p>';
+ box.innerHTML=notifications.length?notifications.map(n=>{
+  const isLike=n.type==="like",isReply=n.type==="reply",isNewReview=n.type==="new_review";
+  const message=isLike?"понравилась твоя рецензия":isReply?"ответил на твой комментарий":isNewReview?"опубликовал новую рецензию":"прокомментировал твою рецензию";
+  const icon=isLike?"♥":isNewReview?"✦":isReply?"↩":"💬";
+  const date=n.created_at?new Date(n.created_at).toLocaleString("ru-RU",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):"";
+  return '<button type="button" class="notification-item '+(n.read_at?'':'unread')+'" data-notification-open="'+escapeHTML(n.id)+'" data-notification-review="'+escapeHTML(n.review_id)+'"><span class="notification-icon">'+icon+'</span><span class="notification-copy"><b>'+escapeHTML(n.actor_username)+'</b> '+message+'<strong>'+escapeHTML(n.title||n.release_title||'Рецензия')+' — '+escapeHTML(n.artist||'')+'</strong><small>'+escapeHTML(date)+'</small></span><i>'+(n.read_at?'':'●')+'</i></button>';
+ }).join(""):'<p class="notifications-empty">Пока нет уведомлений. Здесь появятся ответы на твои комментарии и новые рецензии авторов, на которых ты подписан.</p>';
 }
 async function loadNotifications(){
  if(!token){notifications=[];$("#notificationCount")?.classList.add("hidden");if($("#notificationList"))renderNotifications();return;}
