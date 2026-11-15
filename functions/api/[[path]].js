@@ -174,7 +174,7 @@ export async function onRequest(context) {
 
     if (path === "/api/reviews" && method === "GET") {
       const reviews = await db.prepare(`
-        SELECT rv.id, rv.username, rv.release_title AS release, rv.artist, rv.score, rv.body, rv.created_at
+        SELECT rv.id, rv.username, rv.release_title AS release, rv.artist, rv.score, rv.title, rv.pros, rv.cons, rv.body, rv.created_at
         FROM reviews rv ORDER BY rv.created_at DESC
       `).all();
       return json({ reviews: reviews.results || [] });
@@ -236,28 +236,33 @@ export async function onRequest(context) {
     if (ratingMatch && method === "POST") {
       if (!user) return json({ error: "Войдите, чтобы оценивать" }, 401);
       const releaseId = Number(ratingMatch[1]);
-      const score = Number(body.score);
-      if (!Number.isInteger(score) || score < 1 || score > 10) return json({ error: "Оценка должна быть от 1 до 10" }, 400);
+      const criteria = ["sound","composition","lyrics","originality","atmosphere"].map(k => Number(body[k]));
+      if (criteria.some(v => !Number.isInteger(v) || v < 1 || v > 10)) return json({ error: "Каждый критерий должен быть от 1 до 10" }, 400);
+      const score = Math.round(criteria.reduce((sum,v)=>sum+v,0)/criteria.length*10)/10;
       const release = await db.prepare("SELECT id FROM releases WHERE id = ?").bind(releaseId).first();
       if (!release) return json({ error: "Релиз не найден" }, 404);
       await db.prepare(`
-        INSERT INTO ratings (user_id,release_id,score) VALUES (?,?,?)
-        ON CONFLICT(user_id,release_id) DO UPDATE SET score=excluded.score
-      `).bind(user.id, releaseId, score).run();
+        INSERT INTO ratings (user_id,release_id,score,sound,composition,lyrics,originality,atmosphere) VALUES (?,?,?,?,?,?,?,?)
+        ON CONFLICT(user_id,release_id) DO UPDATE SET score=excluded.score,sound=excluded.sound,composition=excluded.composition,lyrics=excluded.lyrics,originality=excluded.originality,atmosphere=excluded.atmosphere
+      `).bind(user.id, releaseId, score, ...criteria).run();
       return json({ ok: true });
     }
 
     if (path === "/api/reviews" && method === "POST") {
       if (!user) return json({ error: "Войдите, чтобы писать рецензии" }, 401);
       const releaseId = Number(body.releaseId);
-      const score = Number(body.score);
+      const criteria = ["sound","composition","lyrics","originality","atmosphere"].map(k => Number(body[k]));
+      const score = Math.round(criteria.reduce((sum,v)=>sum+v,0)/criteria.length*10)/10;
+      const title = String(body.title || "").trim().slice(0,100);
+      const pros = String(body.pros || "").trim().slice(0,1000);
+      const cons = String(body.cons || "").trim().slice(0,1000);
       const text = String(body.body || "").trim();
       const release = await db.prepare("SELECT title,artist FROM releases WHERE id = ?").bind(releaseId).first();
-      if (!release || !Number.isInteger(score) || score < 1 || score > 10 || text.length < 20 || text.length > 5000)
-        return json({ error: "Проверь релиз, оценку и длину текста (20–5000)" }, 400);
+      if (!release || criteria.some(v => !Number.isInteger(v) || v < 1 || v > 10) || !title || text.length < 50 || text.length > 5000)
+        return json({ error: "Проверь релиз, заголовок, пять оценок и длину текста (50–5000)" }, 400);
       const id = crypto.randomUUID();
-      await db.prepare("INSERT INTO reviews (id,user_id,username,release_title,artist,score,body,created_at) VALUES (?,?,?,?,?,?,?,?)")
-        .bind(id, user.id, user.username, release.title, release.artist, score, text, new Date().toISOString()).run();
+      await db.prepare("INSERT INTO reviews (id,user_id,username,release_title,artist,score,body,created_at,title,pros,cons,sound,composition,lyrics,originality,atmosphere) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+        .bind(id, user.id, user.username, release.title, release.artist, score, text, new Date().toISOString(), title, pros, cons, ...criteria).run();
       return json({ ok: true }, 201);
     }
 
