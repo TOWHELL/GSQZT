@@ -83,7 +83,12 @@ function publicUser(user) {
   return { id: user.id, username: user.username, email: user.email, avatar: user.avatar || null };
 }
 
-async function ensureAvatarColumn(db) {\n  const cols = await db.prepare("PRAGMA table_info(users)").all();\n  if (!(cols.results || []).some(c => c.name === "avatar")) await db.prepare("ALTER TABLE users ADD COLUMN avatar TEXT").run();\n}\n\nasync function ensureRatingColumns(db) {
+async function ensureAvatarColumn(db) {
+  const cols = await db.prepare("PRAGMA table_info(users)").all();
+  if (!(cols.results || []).some(c => c.name === "avatar")) await db.prepare("ALTER TABLE users ADD COLUMN avatar TEXT").run();
+}
+
+async function ensureRatingColumns(db) {
   const ratingCols = await db.prepare("PRAGMA table_info(ratings)").all();
   const existingRatings = new Set((ratingCols.results || []).map(c => c.name));
   for (const name of ["sound","composition","lyrics","originality","atmosphere"]) {
@@ -152,7 +157,8 @@ export async function onRequest(context) {
   const db = env.GSQZT_DB;
 
   try {
-    await ensureSeeds(db);\n    await ensureAvatarColumn(db);
+    await ensureSeeds(db);
+    await ensureAvatarColumn(db);
     await ensureSubmissionTables(db);
     await ensureRatingColumns(db);
     await ensureScoreScale(db);
