@@ -250,6 +250,7 @@ export async function onRequest(context) {
     }
 
     await db.prepare("CREATE TABLE IF NOT EXISTS review_likes (user_id TEXT NOT NULL REFERENCES users(id), review_id TEXT NOT NULL REFERENCES reviews(id) ON DELETE CASCADE, created_at TEXT NOT NULL, PRIMARY KEY(user_id,review_id))").run();
+    await db.prepare("CREATE TABLE IF NOT EXISTS review_comments (id TEXT PRIMARY KEY, review_id TEXT NOT NULL REFERENCES reviews(id) ON DELETE CASCADE, user_id TEXT NOT NULL REFERENCES users(id), username TEXT NOT NULL, body TEXT NOT NULL, created_at TEXT NOT NULL)").run();
 
     const reviewLikeMatch = path.match(/^\/api\/reviews\/([a-f0-9-]+)\/like$/i);
     if (reviewLikeMatch && method === "POST") {
@@ -265,12 +266,41 @@ export async function onRequest(context) {
       return json({ ok: true });
     }
 
+    const reviewCommentsMatch = path.match(/^\/api\/reviews\/([a-f0-9-]+)\/comments$/i);
+    if (reviewCommentsMatch && method === "GET") {
+      const reviewExists = await db.prepare("SELECT id FROM reviews WHERE id=?").bind(reviewCommentsMatch[1]).first();
+      if (!reviewExists) return json({ error: "Рецензия не найдена" }, 404);
+      const rows = await db.prepare("SELECT c.id,c.username,c.body,c.created_at,u.avatar,CASE WHEN (? IS NOT NULL AND c.user_id=?) OR ?=1 THEN 1 ELSE 0 END AS can_delete FROM review_comments c JOIN users u ON u.id=c.user_id WHERE c.review_id=? ORDER BY c.created_at ASC")
+        .bind(user?.id || null,user?.id || null,isAdmin(user)?1:0,reviewCommentsMatch[1]).all();
+      return json({ comments: rows.results || [] });
+    }
+    if (reviewCommentsMatch && method === "POST") {
+      if (!user) return json({ error: "Войдите, чтобы комментировать" }, 401);
+      const bodyText = String(body.body || "").trim();
+      const reviewExists = await db.prepare("SELECT id FROM reviews WHERE id=?").bind(reviewCommentsMatch[1]).first();
+      if (!reviewExists) return json({ error: "Рецензия не найдена" }, 404);
+      if (!bodyText || bodyText.length > 1000) return json({ error: "Комментарий должен содержать от 1 до 1000 символов" }, 400);
+      const id = crypto.randomUUID();
+      await db.prepare("INSERT INTO review_comments (id,review_id,user_id,username,body,created_at) VALUES (?,?,?,?,?,?)")
+        .bind(id,reviewCommentsMatch[1],user.id,user.username,bodyText,new Date().toISOString()).run();
+      return json({ ok: true, id }, 201);
+    }
+    const commentDeleteMatch = path.match(/^\/api\/reviews\/([a-f0-9-]+)\/comments\/([a-f0-9-]+)$/i);
+    if (commentDeleteMatch && method === "DELETE") {
+      if (!user) return json({ error: "Войдите в аккаунт" }, 401);
+      const result = await db.prepare("DELETE FROM review_comments WHERE id=? AND review_id=? AND (user_id=? OR ?=1)")
+        .bind(commentDeleteMatch[2],commentDeleteMatch[1],user.id,isAdmin(user)?1:0).run();
+      if (!result.meta || result.meta.changes === 0) return json({ error: "Комментарий не найден или у вас нет прав на удаление" }, 404);
+      return json({ ok: true });
+    }
+
     if (path === "/api/reviews" && method === "GET") {
       const reviews = await db.prepare(`
-        SELECT rv.id, rv.username, rv.release_title AS release, rv.artist, rv.score, rv.title, rv.pros, rv.cons, rv.body, rv.created_at, rv.sound, rv.composition, rv.lyrics, rv.originality, rv.atmosphere,
+        SELECT rv.id, rv.username, u.avatar, rv.release_title AS release, rv.artist, rv.score, rv.title, rv.pros, rv.cons, rv.body, rv.created_at, rv.sound, rv.composition, rv.lyrics, rv.originality, rv.atmosphere,
           (SELECT COUNT(*) FROM review_likes rl WHERE rl.review_id=rv.id) AS likes_count,
+          (SELECT COUNT(*) FROM review_comments rc WHERE rc.review_id=rv.id) AS comments_count,
           CASE WHEN ? IS NOT NULL AND EXISTS(SELECT 1 FROM review_likes rl WHERE rl.review_id=rv.id AND rl.user_id=?) THEN 1 ELSE 0 END AS liked_by_me
-        FROM reviews rv ORDER BY rv.created_at DESC
+        FROM reviews rv JOIN users u ON u.id=rv.user_id ORDER BY rv.created_at DESC
       `).bind(user?.id || null,user?.id || null).all();
       return json({ reviews: reviews.results || [] });
     }
@@ -289,7 +319,7 @@ export async function onRequest(context) {
       const profile = await db.prepare("SELECT id,username,created_at,avatar FROM users WHERE username=? COLLATE NOCASE").bind(username).first();
       if (!profile) return json({ error: "Пользователь не найден" }, 404);
       const stats = await db.prepare("SELECT (SELECT COUNT(*) FROM reviews WHERE user_id=?) AS reviews_count,(SELECT COUNT(*) FROM ratings WHERE user_id=?) AS ratings_count,(SELECT ROUND(AVG(score),1) FROM reviews WHERE user_id=?) AS average_score").bind(profile.id,profile.id,profile.id).first();
-      const items = await db.prepare("SELECT id,username,release_title AS release,artist,score,title,pros,cons,body,created_at,sound,composition,lyrics,originality,atmosphere FROM reviews WHERE user_id=? ORDER BY created_at DESC").bind(profile.id).all();
+      const items = await db.prepare("SELECT id,username,release_title AS release,artist,score,title,pros,cons,body,created_at,sound,composition,lyrics,originality,atmosphere,(SELECT COUNT(*) FROM review_likes rl WHERE rl.review_id=reviews.id) AS likes_count,(SELECT COUNT(*) FROM review_comments rc WHERE rc.review_id=reviews.id) AS comments_count FROM reviews WHERE user_id=? ORDER BY created_at DESC").bind(profile.id).all();
       return json({ profile: { username: profile.username, created_at: profile.created_at, avatar: profile.avatar || null, reviews_count: stats.reviews_count || 0, ratings_count: stats.ratings_count || 0, average_score: stats.average_score, reviews: items.results || [] } });
     }
 
@@ -375,6 +405,7 @@ export async function onRequest(context) {
       await db.batch([
         db.prepare("DELETE FROM ratings WHERE release_id=?").bind(releaseId),
         db.prepare("DELETE FROM favorites WHERE release_id=?").bind(releaseId),
+        db.prepare("DELETE FROM review_comments WHERE review_id IN (SELECT id FROM reviews WHERE release_title=? AND artist=?)").bind(release.title,release.artist),
         db.prepare("DELETE FROM reviews WHERE release_title=? AND artist=?").bind(release.title,release.artist),
         db.prepare("DELETE FROM releases WHERE id=?").bind(releaseId)
       ]);
@@ -383,6 +414,7 @@ export async function onRequest(context) {
     const deleteReviewMatch = path.match(/^\/api\/admin\/reviews\/([a-f0-9-]+)$/i);
     if (deleteReviewMatch && method === "DELETE") {
       if (!isAdmin(user)) return json({ error: "Доступ только для администратора TOWHELL" }, 403);
+      await db.prepare("DELETE FROM review_comments WHERE review_id=?").bind(deleteReviewMatch[1]).run();
       const result = await db.prepare("DELETE FROM reviews WHERE id=?").bind(deleteReviewMatch[1]).run();
       if (!result.meta || result.meta.changes === 0) return json({ error: "Рецензия не найдена" }, 404);
       return json({ ok: true });
