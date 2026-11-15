@@ -247,7 +247,7 @@ export async function onRequest(context) {
       if (!title || title.length > 100 || !artist || artist.length > 100 ||
           !["Альбом","Сингл"].includes(type) || !Number.isInteger(year) || year < 1900 || year > 2100 ||
           genre.length > 50 || description.length > 2000 ||
-          (coverUrl && !/^https:\/\//i.test(coverUrl)) || (listeningUrl && !/^https:\/\//i.test(listeningUrl)))
+          (coverUrl && !/^https:\/\/[^\s"'<>]+$/i.test(coverUrl)) || (listeningUrl && !/^https:\/\//i.test(listeningUrl)))
         return json({ error: "Проверь поля. Ссылки должны начинаться с https://" }, 400);
       const id = crypto.randomUUID();
       await db.prepare(`INSERT INTO release_submissions
@@ -282,7 +282,7 @@ export async function onRequest(context) {
       await db.batch([
         db.prepare("INSERT INTO releases (id,title,artist,type,year,tag,art,cover,description,score) VALUES (?,?,?,?,?,?,?,?,?,?)")
           .bind(next.id,submission.title,submission.artist,submission.type,submission.year,submission.genre || "COMMUNITY",art,
-            "linear-gradient(135deg,#d4fa45,#53652a)",submission.description + (submission.listening_url ? "\\n\\nСлушать: " + submission.listening_url : ""),0),
+            submission.cover_url || "linear-gradient(135deg,#d4fa45,#53652a)",submission.description + (submission.listening_url ? "\\n\\nСлушать: " + submission.listening_url : ""),0),
         db.prepare("UPDATE release_submissions SET status='approved',reviewed_at=?,reviewed_by=? WHERE id=?")
           .bind(new Date().toISOString(),user.id,submissionId)
       ]);
