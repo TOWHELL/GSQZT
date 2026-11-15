@@ -151,6 +151,9 @@ async function ensureCommunityFeatures(db) {
   const commentCols = await db.prepare("PRAGMA table_info(review_comments)").all();
   if (!(commentCols.results || []).some(c => c.name === "parent_comment_id")) await db.prepare("ALTER TABLE review_comments ADD COLUMN parent_comment_id TEXT").run();
 }
+async function ensureReportsTable(db) {
+  await db.prepare("CREATE TABLE IF NOT EXISTS content_reports (id TEXT PRIMARY KEY, reporter_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, target_type TEXT NOT NULL, target_id TEXT NOT NULL, reason TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', created_at TEXT NOT NULL, reviewed_at TEXT, reviewed_by TEXT, UNIQUE(reporter_user_id,target_type,target_id))").run();
+}
 async function ensureNotificationsTable(db) {
   await db.prepare("CREATE TABLE IF NOT EXISTS notifications (id TEXT PRIMARY KEY, recipient_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, actor_user_id TEXT, actor_username TEXT NOT NULL, type TEXT NOT NULL, review_id TEXT REFERENCES reviews(id) ON DELETE CASCADE, created_at TEXT NOT NULL, read_at TEXT)").run();
   const cols = await db.prepare("PRAGMA table_info(notifications)").all();
@@ -194,6 +197,7 @@ export async function onRequest(context) {
     await ensureSubmissionTables(db);
     await ensureCommunityFeatures(db);
     await ensureNotificationsTable(db);
+    await ensureReportsTable(db);
     await ensureRatingColumns(db);
     await ensureScoreScale(db);
     await ensureAtmosphereMultiplier(db);
