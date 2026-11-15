@@ -431,6 +431,23 @@ export async function onRequest(context) {
       return json({ ok: true, release_id: next.id });
     }
 
+    const updateReleaseDetailsMatch = path.match(/^\/api\/admin\/releases\/(\d+)\/details$/);
+    if (updateReleaseDetailsMatch && method === "PATCH") {
+      if (!isAdmin(user)) return json({ error: "Доступ только для администратора TOWHELL" }, 403);
+      const releaseId = Number(updateReleaseDetailsMatch[1]);
+      const title = String(body.title || "").trim();
+      const description = String(body.description || "").trim();
+      if (!title || title.length > 100 || description.length > 2000)
+        return json({ error: "Название должно содержать 1–100 символов, описание — не более 2000" }, 400);
+      const release = await db.prepare("SELECT id FROM releases WHERE id=?").bind(releaseId).first();
+      if (!release) return json({ error: "Релиз не найден" }, 404);
+      await db.batch([
+        db.prepare("UPDATE releases SET title=?,description=? WHERE id=?").bind(title,description,releaseId),
+        db.prepare("UPDATE reviews SET release_title=? WHERE release_id=?").bind(title,releaseId)
+      ]);
+      return json({ ok: true });
+    }
+
     const updateListeningMatch = path.match(/^\/api\/admin\/releases\/(\d+)\/listening$/);
     if (updateListeningMatch && method === "PATCH") {
       if (!isAdmin(user)) return json({ error: "Доступ только для администратора TOWHELL" }, 403);
