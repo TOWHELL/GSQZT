@@ -73,7 +73,8 @@
 @media(max-width:650px){
  #charts .top-tabs{width:100%;gap:4px}
  #charts .top-tab{flex:1;padding:9px 5px;font-size:9px}
- #charts .chartrow,#charts .leader-row{min-height:76px;padding:11px 9px;gap:8px;grid-template-columns:28px 48px minmax(0,1fr) auto}
+ #charts .chartrow{min-height:76px;padding:11px 9px;gap:8px;grid-template-columns:28px 48px minmax(0,1fr) auto}
+ #charts .leader-row{min-height:76px;padding:11px 9px;gap:8px;grid-template-columns:28px minmax(0,1fr) auto}
  #charts .chartrow .cover{width:48px}
  #charts .chartrow .cover strong{font-size:23px}
  #charts .chartrow h3,#charts .leader-row h3{font-size:11px}
