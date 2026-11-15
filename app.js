@@ -146,7 +146,45 @@ function rateModal(r){
   updatePreview();
   $("#rateGo").onclick=async()=>{if(!token)return auth();const criteria=readCriteria("rate_");if(Object.values(criteria).some(v=>!Number.isInteger(v)||v<0||v>10)){toast("Заполни все критерии целыми числами от 0 до 10");return;}try{await api(`/releases/${r.id}/rating`,{method:"POST",body:JSON.stringify(criteria)});await load();close();toast("Оценка сохранена")}catch(e){toast(e.message)}};
 }
-function writeReview(){if(!token)return auth();modal(`<small>ТВОЁ МНЕНИЕ</small><h2>Новая рецензия</h2><label class="field"><span>РЕЛИЗ</span><select id="rid">${releases.map(r=>`<option value="${r.id}">${r.title} — ${r.artist}</option>`).join("")}</select></label><label class="field"><span>ЗАГОЛОВОК</span><input id="rtitle" maxlength="100" placeholder="Коротко о главном"></label><h3>Оценка по критериям</h3><p class="form-intro">Четыре основных критерия — по 10 баллов. Атмосфера / вайб даёт множитель от ×1 до ×2,25. Максимум — 90 баллов.</p>${criteriaFields("review_")}<label class="field"><span>ПЛЮСЫ</span><textarea id="rpros" maxlength="1000" placeholder="Что особенно удалось?"></textarea></label><label class="field"><span>МИНУСЫ</span><textarea id="rcons" maxlength="1000" placeholder="Что можно было сделать лучше?"></textarea></label><label class="field"><span>РЕЦЕНЗИЯ · ОТ 50 ДО 5000 СИМВОЛОВ</span><textarea id="rbody" maxlength="5000" placeholder="Расскажи о звучании, идеях и впечатлениях..."></textarea></label><button class="lime" id="publish">Опубликовать рецензию</button>`);$("#publish").onclick=async()=>{try{const criteria=readCriteria("review_");if(Object.values(criteria).some(v=>!Number.isInteger(v)||v<0||v>10)){toast("Заполни все критерии целыми числами от 0 до 10");return;}await api("/reviews",{method:"POST",body:JSON.stringify({releaseId:Number($("#rid").value),title:$("#rtitle").value,pros:$("#rpros").value,cons:$("#rcons").value,body:$("#rbody").value,...criteria})});await load();close();toast("Рецензия опубликована")}catch(e){toast(e.message)}}}
+function writeReview(){
+  if(!token)return auth();
+  if(!releases.length){toast("Сначала добавь релиз на сайт");return;}
+  const first=releases[0];
+  const hero=r=>`<div class="rating-cover">${r.cover&&/^https:\/\//i.test(r.cover)?`<img src="${r.cover}" alt="">`:`<span>${String(r.art||r.artist||"♪").slice(0,1)}</span>`}</div><div class="rating-track"><small>НОВАЯ РЕЦЕНЗИЯ · ${String(r.type||"релиз").toUpperCase()}</small><h2>${r.title}</h2><p>${r.artist} · ${r.year}</p></div>`;
+  modal(`<div class="rating-modal review-compose">
+    <div class="rating-hero" id="reviewReleaseHero">${hero(first)}</div>
+    <label class="field review-release"><span>ВЫБЕРИ РЕЛИЗ</span><select id="rid">${releases.map(r=>`<option value="${r.id}">${r.title} — ${r.artist}</option>`).join("")}</select></label>
+    <label class="field review-title"><span>ЗАГОЛОВОК РЕЦЕНЗИИ</span><input id="rtitle" maxlength="100" placeholder="Коротко о главном"></label>
+    <div class="rating-intro"><div><b>Предварительный итог</b><span>Оценка пересчитывается при изменении критериев</span></div><div class="rating-total"><strong id="reviewScorePreview">0.0</strong><small>/ 90</small></div></div>
+    <div class="rating-progress"><span id="reviewScoreBar"></span></div>
+    <div class="rating-criteria-heading"><h3>Критерии оценки</h3><small>КАЖДЫЙ ОТ 0 ДО 10</small></div>
+    ${criteriaFields("review_")}
+    <div class="rating-formula">Первые четыре критерия формируют базовую оценку. Атмосфера / вайб умножает её от ×1 до ×2,25.</div>
+    <div class="review-writing-heading"><h3>Текст рецензии</h3><p>Расскажи, что понравилось и что можно улучшить</p></div>
+    <label class="field"><span>ПЛЮСЫ</span><textarea id="rpros" maxlength="1000" placeholder="Что особенно удалось?"></textarea></label>
+    <label class="field"><span>МИНУСЫ</span><textarea id="rcons" maxlength="1000" placeholder="Что можно было сделать лучше?"></textarea></label>
+    <label class="field"><span>РЕЦЕНЗИЯ · ОТ 50 ДО 5000 СИМВОЛОВ</span><textarea id="rbody" maxlength="5000" placeholder="Расскажи о звучании, идеях и впечатлениях..."></textarea></label>
+    <button class="lime rating-submit" id="publish">Опубликовать рецензию <span>↗</span></button>
+  </div>`);
+  $("#rid").onchange=()=>{const r=releases.find(x=>Number(x.id)===Number($("#rid").value));if(r)$("#reviewReleaseHero").innerHTML=hero(r);};
+  const updateReviewPreview=()=>{
+    const keys=["sound","composition","lyrics","originality","atmosphere"];
+    const values=keys.map(k=>$("#review_"+k).value.trim());
+    const valid=values.every(v=>v===""||(Number.isInteger(Number(v))&&Number(v)>=0&&Number(v)<=10));
+    const score=valid?calculateScore(Object.fromEntries(keys.map((k,i)=>[k,values[i]===""?0:Number(values[i])]))):null;
+    $("#reviewScorePreview").textContent=score===null?"—":score.toFixed(1);
+    $("#reviewScoreBar").style.width=(score===null?0:score/90*100)+"%";
+  };
+  $$(".review-compose .criterion input").forEach(input=>input.addEventListener("input",updateReviewPreview));
+  updateReviewPreview();
+  $("#publish").onclick=async()=>{try{
+    const criteria=readCriteria("review_");
+    if(Object.values(criteria).some(v=>!Number.isInteger(v)||v<0||v>10)){toast("Заполни все критерии целыми числами от 0 до 10");return;}
+    if($("#rbody").value.trim().length<50){toast("Рецензия должна содержать минимум 50 символов");return;}
+    await api("/reviews",{method:"POST",body:JSON.stringify({releaseId:Number($("#rid").value),title:$("#rtitle").value,pros:$("#rpros").value,cons:$("#rcons").value,body:$("#rbody").value,...criteria})});
+    await load();close();toast("Рецензия опубликована");
+  }catch(e){toast(e.message)}};
+}
 $("#charts")?.addEventListener("click",e=>{const b=e.target.closest("[data-top]");if(!b)return;activeTop=b.dataset.top;renderTop()});
 document.addEventListener("click",e=>{const link=e.target.closest("button[data-profile]");if(!link)return;e.preventDefault();e.stopPropagation();e.stopImmediatePropagation();loadProfile(link.dataset.profile);},true);
 $$("nav button").forEach(b=>b.onclick=()=>{go(b.dataset.page);if(b.dataset.page==="submit")loadMySubmissions();if(b.dataset.page==="admin")loadPending();if(b.dataset.page==="favorites")loadFavoritePage();});$$("[data-goto]").forEach(b=>b.onclick=()=>go(b.dataset.goto));document.addEventListener("change",e=>{if(e.target.id==="avatarFile"&&e.target.files?.[0])saveAvatar(e.target.files[0]);});
