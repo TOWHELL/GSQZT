@@ -142,7 +142,7 @@ function rateModal(r){
     $("#ratingScorePreview").textContent=score===null?"—":score.toFixed(1);
     $("#ratingScoreBar").style.width=(score===null?0:score/90*100)+"%";
   };
-  $(".rating-modal .criterion input").forEach(input=>input.addEventListener("input",updatePreview));
+  $$(".rating-modal .criterion input").forEach(input=>input.addEventListener("input",updatePreview));
   updatePreview();
   $("#rateGo").onclick=async()=>{if(!token)return auth();const criteria=readCriteria("rate_");if(Object.values(criteria).some(v=>!Number.isInteger(v)||v<0||v>10)){toast("Заполни все критерии целыми числами от 0 до 10");return;}try{await api(`/releases/${r.id}/rating`,{method:"POST",body:JSON.stringify(criteria)});await load();close();toast("Оценка сохранена")}catch(e){toast(e.message)}};
 }
