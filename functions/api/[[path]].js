@@ -252,6 +252,14 @@ export async function onRequest(context) {
       return json({ reviews: reviews.results || [] });
     }
 
+    if (path === "/api/users/search" && method === "GET") {
+      const query = String(url.searchParams.get("q") || "").trim().slice(0,24);
+      if (query.length < 2) return json({ users: [] });
+      const rows = await db.prepare("SELECT u.username,u.avatar,(SELECT COUNT(*) FROM reviews rv WHERE rv.user_id=u.id) AS reviews_count FROM users u WHERE u.username LIKE ? COLLATE NOCASE ORDER BY u.username LIMIT 15")
+        .bind("%" + query + "%").all();
+      return json({ users: rows.results || [] });
+    }
+
     const profileMatch = path.match(/^\/api\/users\/([^/]+)$/);
     if (profileMatch && method === "GET") {
       const username = decodeURIComponent(profileMatch[1]);
