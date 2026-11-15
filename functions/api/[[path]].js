@@ -308,6 +308,7 @@ export async function onRequest(context) {
       if (!release) return json({ error: "Релиз не найден" }, 404);
       await db.batch([
         db.prepare("DELETE FROM ratings WHERE release_id=?").bind(releaseId),
+        db.prepare("DELETE FROM favorites WHERE release_id=?").bind(releaseId),
         db.prepare("DELETE FROM reviews WHERE release_title=? AND artist=?").bind(release.title,release.artist),
         db.prepare("DELETE FROM releases WHERE id=?").bind(releaseId)
       ]);
