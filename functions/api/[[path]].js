@@ -83,6 +83,10 @@ function publicUser(user) {
   return { id: user.id, username: user.username, email: user.email, avatar: user.avatar || null };
 }
 
+async function ensureReleaseListeningColumn(db) {
+ const cols=await db.prepare("PRAGMA table_info(releases)").all();
+ if(!(cols.results||[]).some(c=>c.name==="listening_url")) await db.prepare("ALTER TABLE releases ADD COLUMN listening_url TEXT NOT NULL DEFAULT ''").run();
+}
 async function ensureAvatarColumn(db) {
   const cols = await db.prepare("PRAGMA table_info(users)").all();
   if (!(cols.results || []).some(c => c.name === "avatar")) await db.prepare("ALTER TABLE users ADD COLUMN avatar TEXT").run();
@@ -159,6 +163,7 @@ export async function onRequest(context) {
   try {
     await ensureSeeds(db);
     await ensureAvatarColumn(db);
+    await ensureReleaseListeningColumn(db);
     await ensureSubmissionTables(db);
     await ensureRatingColumns(db);
     await ensureScoreScale(db);
@@ -313,13 +318,23 @@ export async function onRequest(context) {
       const next = await db.prepare("SELECT COALESCE(MAX(id),0)+1 AS id FROM releases").first();
       const art = (submission.artist || submission.title).slice(0,1).toUpperCase();
       await db.batch([
-        db.prepare("INSERT INTO releases (id,title,artist,type,year,tag,art,cover,description,score) VALUES (?,?,?,?,?,?,?,?,?,?)")
+        db.prepare("INSERT INTO releases (id,title,artist,type,year,tag,art,cover,description,score,listening_url) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
           .bind(next.id,submission.title,submission.artist,submission.type,submission.year,submission.genre || "COMMUNITY",art,
-            submission.cover_url || "linear-gradient(135deg,#d4fa45,#53652a)",submission.description + (submission.listening_url ? "\\n\\nСлушать: " + submission.listening_url : ""),0),
+            submission.cover_url || "linear-gradient(135deg,#d4fa45,#53652a)",submission.description,0,submission.listening_url || ""),
         db.prepare("UPDATE release_submissions SET status='approved',reviewed_at=?,reviewed_by=? WHERE id=?")
           .bind(new Date().toISOString(),user.id,submissionId)
       ]);
       return json({ ok: true, release_id: next.id });
+    }
+
+    const updateListeningMatch = path.match(/^\/api\/admin\/releases\/(\d+)\/listening$/);
+    if (updateListeningMatch && method === "PATCH") {
+      if (!isAdmin(user)) return json({ error: "Доступ только для администратора TOWHELL" }, 403);
+      const listeningUrl = String(body.listening_url || "").trim();
+      if (listeningUrl && (!/^https:\/\/[^\s"'<>]+$/i.test(listeningUrl) || listeningUrl.length > 2000)) return json({ error: "Вставь корректную HTTPS-ссылку на прослушивание" }, 400);
+      const result = await db.prepare("UPDATE releases SET listening_url=? WHERE id=?").bind(listeningUrl, Number(updateListeningMatch[1])).run();
+      if (!result.meta || result.meta.changes === 0) return json({ error: "Релиз не найден" }, 404);
+      return json({ ok: true });
     }
 
     const updateCoverMatch = path.match(/^\/api\/admin\/releases\/(\d+)\/cover$/);
