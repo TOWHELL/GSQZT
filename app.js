@@ -127,7 +127,7 @@ function rateModal(r){
       <div class="rating-cover">${r.cover&&/^https:\/\//i.test(r.cover)?`<img src="${r.cover}" alt="">`:`<span>${String(r.art||r.artist||"♪").slice(0,1)}</span>`}</div>
       <div class="rating-track"><small>ОЦЕНКА РЕЛИЗА · ${r.type.toUpperCase()}</small><h2>${r.title}</h2><p>${r.artist} · ${r.year}</p></div>
     </div>
-    <div class="rating-intro"><div><b>Твоя оценка</b><span>Поставь баллы по пяти критериям</span></div><div class="rating-total"><strong id="ratingScorePreview">—</strong><small>/ 90</small></div></div>
+    <div class="rating-intro"><div><b>Предварительный итог</b><span>Баллы пересчитываются при каждом изменении</span></div><div class="rating-total"><strong id="ratingScorePreview">—</strong><small>/ 90</small></div></div>
     <div class="rating-progress"><span id="ratingScoreBar"></span></div>
     <div class="rating-criteria-heading"><h3>Критерии оценки</h3><small>КАЖДЫЙ ОТ 0 ДО 10</small></div>
     ${criteriaFields("rate_")}
@@ -137,8 +137,8 @@ function rateModal(r){
   const updatePreview=()=>{
     const keys=["sound","composition","lyrics","originality","atmosphere"];
     const values=keys.map(k=>$("#rate_"+k).value.trim());
-    const complete=values.every(v=>v!==""&&Number.isInteger(Number(v))&&Number(v)>=0&&Number(v)<=10);
-    const score=complete?calculateScore(Object.fromEntries(keys.map((k,i)=>[k,Number(values[i])]))):null;
+    const valid=values.every(v=>v===""||(Number.isInteger(Number(v))&&Number(v)>=0&&Number(v)<=10));
+    const score=valid?calculateScore(Object.fromEntries(keys.map((k,i)=>[k,values[i]===""?0:Number(values[i])]))):null;
     $("#ratingScorePreview").textContent=score===null?"—":score.toFixed(1);
     $("#ratingScoreBar").style.width=(score===null?0:score/90*100)+"%";
   };
