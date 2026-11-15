@@ -49,14 +49,24 @@ async function load(){let [a,b]=await Promise.all([api("/releases"),api("/review
 async function loadFavoritePage(){if(!token){$("#favoriteReleases").innerHTML="<p>Войди, чтобы сохранять релизы в избранное.</p>";return;}const saved=releases.filter(r=>favoriteIds.has(Number(r.id)));$("#favoriteReleases").innerHTML=saved.map(card).join("")||"<p>Пока ничего не добавлено. Нажми ♡ на карточке релиза.</p>";}
 function renderSearch(value){
   const q=String(value||"").trim().toLocaleLowerCase("ru");
-  const releaseBox=$("#searchReleaseResults"),reviewBox=$("#searchReviewResults"),empty=$("#searchEmpty");
-  if(!q){releaseBox.innerHTML="";reviewBox.innerHTML="";empty.textContent="Начни вводить запрос.";empty.classList.remove("hidden");return;}
+  const releaseBox=$("#searchReleaseResults"),reviewBox=$("#searchReviewResults"),userBox=$("#searchUserResults"),empty=$("#searchEmpty");
+  if(!q){releaseBox.innerHTML="";reviewBox.innerHTML="";userBox.innerHTML="";empty.textContent="Начни вводить запрос.";empty.classList.remove("hidden");return;}
   const matchesReleases=releases.filter(r=>[r.title,r.artist,r.type,r.year,r.tag,r.genre,r.description].join(" ").toLocaleLowerCase("ru").includes(q));
   const matchesReviews=reviews.filter(r=>[r.title,r.release,r.artist,r.username,r.body,r.pros,r.cons].join(" ").toLocaleLowerCase("ru").includes(q));
   releaseBox.innerHTML=matchesReleases.map(card).join("");
   reviewBox.innerHTML=matchesReviews.map(review).join("");
-  empty.textContent=matchesReleases.length||matchesReviews.length?"": "Ничего не найдено. Попробуй другой запрос.";
-  empty.classList.toggle("hidden",!!(matchesReleases.length||matchesReviews.length));
+  userBox.innerHTML="";
+  empty.textContent=matchesReleases.length||matchesReviews.length?"":"Ничего не найдено. Попробуй другой запрос.";
+  empty.classList.toggle("hidden",!!(matchesReleases.length||matchesReviews.length)||q.length>=2);
+  if(q.length>=2){
+    api("/users/search?q="+encodeURIComponent(String(value).trim())).then(d=>{
+      if($("#globalSearch")?.value.trim().toLocaleLowerCase("ru")!==q)return;
+      const people=d.users||[];
+      userBox.innerHTML=people.map(p=>`<div class="leader-row"><div class="avatar">${p.avatar?`<img src="${p.avatar}" alt="">`:p.username.slice(0,1).toUpperCase()}</div><div><h3><button type="button" class="profile-link" data-profile="${p.username}">${p.username}</button></h3><p>${p.reviews_count} рецензий</p></div></div>`).join("");
+      empty.textContent=matchesReleases.length||matchesReviews.length||people.length?"":"Ничего не найдено. Попробуй другой запрос.";
+      empty.classList.toggle("hidden",!!(matchesReleases.length||matchesReviews.length||people.length));
+    }).catch(()=>{if($("#globalSearch")?.value.trim().toLocaleLowerCase("ru")===q){empty.textContent=matchesReleases.length||matchesReviews.length?"":"Не удалось выполнить поиск пользователей.";empty.classList.toggle("hidden",!!(matchesReleases.length||matchesReviews.length));}});
+  }
 }
 
 async function saveAvatar(file){
