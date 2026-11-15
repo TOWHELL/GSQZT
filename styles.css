@@ -211,3 +211,8 @@
 
 /* Review likes */
 .review-like{display:inline-flex;align-items:center;gap:7px;margin-top:13px;padding:7px 11px;border:1px solid #41414a;border-radius:8px;background:#17171c;color:#b8b8bd;font:700 12px 'DM Mono';cursor:pointer;transition:border-color .18s ease,color .18s ease,background .18s ease}.review-like:hover,.review-like.is-liked{color:var(--acid);border-color:#777b4c;background:#25271b}.review-like span{font-size:11px}
+
+
+/* Review sorting */
+.review-sort-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:24px 0 8px;padding-bottom:14px;border-bottom:1px solid var(--line)}.review-sort-bar>span{font:9px "DM Mono";letter-spacing:.12em;color:var(--muted);margin-right:5px}.review-sort{padding:9px 12px;border:1px solid var(--line);border-radius:7px;background:transparent;color:var(--muted);font-size:11px}.review-sort.active{background:var(--acid);border-color:var(--acid);color:#171719;font-weight:800}
+@media(max-width:520px){.review-sort-bar{gap:6px}.review-sort{font-size:10px;padding:8px 9px}}
