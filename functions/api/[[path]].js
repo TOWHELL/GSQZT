@@ -87,6 +87,11 @@ async function ensureReleaseListeningColumn(db) {
  const cols=await db.prepare("PRAGMA table_info(releases)").all();
  if(!(cols.results||[]).some(c=>c.name==="listening_url")) await db.prepare("ALTER TABLE releases ADD COLUMN listening_url TEXT NOT NULL DEFAULT ''").run();
 }
+
+async function ensureReleaseGenreColumn(db) {
+  const cols = await db.prepare("PRAGMA table_info(releases)").all();
+  if (!(cols.results || []).some(c => c.name === "genre")) await db.prepare("ALTER TABLE releases ADD COLUMN genre TEXT NOT NULL DEFAULT ''").run();
+}
 async function ensureAvatarColumn(db) {
   const cols = await db.prepare("PRAGMA table_info(users)").all();
   if (!(cols.results || []).some(c => c.name === "avatar")) await db.prepare("ALTER TABLE users ADD COLUMN avatar TEXT").run();
@@ -165,6 +170,7 @@ export async function onRequest(context) {
     await ensureSeeds(db);
     await ensureAvatarColumn(db);
     await ensureReleaseListeningColumn(db);
+    await ensureReleaseGenreColumn(db);
     await ensureSubmissionTables(db);
     await ensureRatingColumns(db);
     await ensureScoreScale(db);
