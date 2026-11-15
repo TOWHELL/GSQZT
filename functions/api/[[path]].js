@@ -539,7 +539,7 @@ export async function onRequest(context) {
       const genre = String(body.genre || "").trim(), coverUrl = String(body.cover_url || "").trim();
       const description = String(body.description || "").trim(), listeningUrl = String(body.listening_url || "").trim();
       if (!title || title.length > 100 || !artist || artist.length > 250 ||
-          !["Альбом","Сингл"].includes(type) || !Number.isInteger(year) || year < 1900 || year > 2100 ||
+          !["Альбом","EP","Сингл"].includes(type) || !Number.isInteger(year) || year < 1900 || year > 2100 ||
           genre.length > 50 || description.length > 2000 ||
           (coverUrl && !/^https:\/\/[^\s"'<>]+$/i.test(coverUrl)) || (listeningUrl && !/^https:\/\//i.test(listeningUrl)))
         return json({ error: "Проверь поля. Ссылки должны начинаться с https://" }, 400);
