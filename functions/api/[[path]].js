@@ -224,6 +224,7 @@ export async function onRequest(context) {
           COALESCE(ROUND(AVG(rt.score),1), r.score) AS score,
           CASE WHEN EXISTS(SELECT 1 FROM ratings mine WHERE mine.release_id=r.id AND mine.user_id=?)
           OR EXISTS(SELECT 1 FROM reviews mineReview WHERE mineReview.release_id=r.id AND mineReview.user_id=?) THEN 1 ELSE 0 END AS rated_by_me,
+          CASE WHEN EXISTS(SELECT 1 FROM reviews mineReview WHERE mineReview.release_id=r.id AND mineReview.user_id=?) THEN 1 ELSE 0 END AS reviewed_by_me,
         COALESCE((SELECT mine.sound FROM ratings mine WHERE mine.release_id=r.id AND mine.user_id=? LIMIT 1),(SELECT mineReview.sound FROM reviews mineReview WHERE mineReview.release_id=r.id AND mineReview.user_id=? ORDER BY mineReview.created_at DESC LIMIT 1)) AS my_sound,
         COALESCE((SELECT mine.composition FROM ratings mine WHERE mine.release_id=r.id AND mine.user_id=? LIMIT 1),(SELECT mineReview.composition FROM reviews mineReview WHERE mineReview.release_id=r.id AND mineReview.user_id=? ORDER BY mineReview.created_at DESC LIMIT 1)) AS my_composition,
         COALESCE((SELECT mine.lyrics FROM ratings mine WHERE mine.release_id=r.id AND mine.user_id=? LIMIT 1),(SELECT mineReview.lyrics FROM reviews mineReview WHERE mineReview.release_id=r.id AND mineReview.user_id=? ORDER BY mineReview.created_at DESC LIMIT 1)) AS my_lyrics,
@@ -231,7 +232,7 @@ export async function onRequest(context) {
         COALESCE((SELECT mine.atmosphere FROM ratings mine WHERE mine.release_id=r.id AND mine.user_id=? LIMIT 1),(SELECT mineReview.atmosphere FROM reviews mineReview WHERE mineReview.release_id=r.id AND mineReview.user_id=? ORDER BY mineReview.created_at DESC LIMIT 1)) AS my_atmosphere
         FROM releases r LEFT JOIN ratings rt ON rt.release_id = r.id
         GROUP BY r.id ORDER BY r.id
-      `).bind(user?.id || null,user?.id || null,user?.id || null,user?.id || null,user?.id || null,user?.id || null,user?.id || null,user?.id || null,user?.id || null,user?.id || null,user?.id || null,user?.id || null).all();
+      `).bind(user?.id || null,user?.id || null,user?.id || null,user?.id || null,user?.id || null,user?.id || null,user?.id || null,user?.id || null,user?.id || null,user?.id || null,user?.id || null,user?.id || null,user?.id || null).all();
       return json({ releases: releases.results || [] });
     }
 
@@ -356,6 +357,19 @@ export async function onRequest(context) {
       const rows = await db.prepare("SELECT id,title,artist,type,year,genre,status,created_at,rejection_reason FROM release_submissions WHERE submitter_user_id = ? ORDER BY created_at DESC").bind(user.id).all();
       return json({ submissions: rows.results || [] });
     }
+    if (path === "/api/admin/ratings" && method === "GET") {
+      if (!isAdmin(user)) return json({ error: "Доступ только для администратора TOWHELL" }, 403);
+      const rows = await db.prepare("SELECT rt.user_id,rt.release_id,rt.score,rt.sound,rt.composition,rt.lyrics,rt.originality,rt.atmosphere,u.username,r.title AS release_title,r.artist FROM ratings rt JOIN users u ON u.id=rt.user_id JOIN releases r ON r.id=rt.release_id ORDER BY rt.rowid DESC").all();
+      return json({ ratings: rows.results || [] });
+    }
+    const adminRatingDeleteMatch = path.match(/^\/api\/admin\/ratings\/([^/]+)\/(\d+)$/);
+    if (adminRatingDeleteMatch && method === "DELETE") {
+      if (!isAdmin(user)) return json({ error: "Доступ только для администратора TOWHELL" }, 403);
+      const result = await db.prepare("DELETE FROM ratings WHERE user_id=? AND release_id=?").bind(decodeURIComponent(adminRatingDeleteMatch[1]),Number(adminRatingDeleteMatch[2])).run();
+      if (!result.meta || result.meta.changes === 0) return json({ error: "Оценка не найдена" }, 404);
+      return json({ ok: true });
+    }
+
     if (path === "/api/admin/users" && method === "GET") {
       if (!isAdmin(user)) return json({ error: "Доступ только для администратора TOWHELL" }, 403);
       const rows = await db.prepare(`
@@ -457,15 +471,27 @@ export async function onRequest(context) {
     if (deleteReviewMatch && method === "DELETE") {
       if (!isAdmin(user)) return json({ error: "Доступ только для администратора TOWHELL" }, 403);
       await db.prepare("DELETE FROM review_comments WHERE review_id=?").bind(deleteReviewMatch[1]).run();
-      const result = await db.prepare("DELETE FROM reviews WHERE id=?").bind(deleteReviewMatch[1]).run();
-      if (!result.meta || result.meta.changes === 0) return json({ error: "Рецензия не найдена" }, 404);
+      const reviewToDelete = await db.prepare("SELECT user_id,release_id FROM reviews WHERE id=?").bind(deleteReviewMatch[1]).first();
+      if (!reviewToDelete) return json({ error: "Рецензия не найдена" }, 404);
+      await db.prepare("DELETE FROM reviews WHERE id=?").bind(deleteReviewMatch[1]).run();
+      if (reviewToDelete.release_id !== null && reviewToDelete.release_id !== undefined) {
+        const other = await db.prepare("SELECT 1 AS found FROM reviews WHERE user_id=? AND release_id=? LIMIT 1").bind(reviewToDelete.user_id,reviewToDelete.release_id).first();
+        if (!other) await db.prepare("DELETE FROM ratings WHERE user_id=? AND release_id=?").bind(reviewToDelete.user_id,reviewToDelete.release_id).run();
+      }
       return json({ ok: true });
     }
 
     const ratingMatch = path.match(/^\/api\/releases\/(\d+)\/rating$/);
-    if (ratingMatch && (method === "POST" || method === "PATCH")) {
+    if (ratingMatch && (method === "POST" || method === "PATCH" || method === "DELETE")) {
       if (!user) return json({ error: "Войдите, чтобы оценивать" }, 401);
       const releaseId = Number(ratingMatch[1]);
+      if (method === "DELETE") {
+        const linkedReview = await db.prepare("SELECT id FROM reviews WHERE user_id=? AND release_id=? LIMIT 1").bind(user.id,releaseId).first();
+        if (linkedReview) return json({ error: "Сначала удали свою рецензию: её оценка связана с этим релизом." }, 409);
+        const removed = await db.prepare("DELETE FROM ratings WHERE user_id=? AND release_id=?").bind(user.id,releaseId).run();
+        if (!removed.meta || removed.meta.changes === 0) return json({ error: "Оценка не найдена" }, 404);
+        return json({ ok: true });
+      }
       const criteria = ["sound","composition","lyrics","originality","atmosphere"].map(k => Number(body[k]));
       if (criteria.some(v => !Number.isInteger(v) || v < 0 || v > 10)) return json({ error: "Каждый критерий должен быть от 0 до 10" }, 400);
       const score = (criteria[0]+criteria[1]+criteria[2]+criteria[3])*(1+criteria[4]*0.125);
@@ -486,6 +512,17 @@ export async function onRequest(context) {
     }
 
     const editReviewMatch = path.match(/^\/api\/reviews\/([a-f0-9-]+)$/i);
+    if (editReviewMatch && method === "DELETE") {
+      if (!user) return json({ error: "Войдите в аккаунт" }, 401);
+      const existing = await db.prepare("SELECT release_id FROM reviews WHERE id=? AND user_id=?").bind(editReviewMatch[1],user.id).first();
+      if (!existing) return json({ error: "Рецензия не найдена или принадлежит другому пользователю" }, 404);
+      await db.prepare("DELETE FROM reviews WHERE id=? AND user_id=?").bind(editReviewMatch[1],user.id).run();
+      if (existing.release_id !== null && existing.release_id !== undefined) {
+        const other = await db.prepare("SELECT 1 AS found FROM reviews WHERE user_id=? AND release_id=? LIMIT 1").bind(user.id,existing.release_id).first();
+        if (!other) await db.prepare("DELETE FROM ratings WHERE user_id=? AND release_id=?").bind(user.id,existing.release_id).run();
+      }
+      return json({ ok: true });
+    }
     if (editReviewMatch && method === "PATCH") {
       if (!user) return json({ error: "Войдите, чтобы дополнять рецензии" }, 401);
       const addition = String(body.addition || "").trim();
