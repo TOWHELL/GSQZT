@@ -333,7 +333,7 @@ export async function onRequest(context) {
 
     if (path === "/api/reviews" && method === "GET") {
       const reviews = await db.prepare(`
-        SELECT rv.id, rv.username, u.avatar, rv.release_title AS release, rv.artist, rv.score, rv.title, rv.pros, rv.cons, rv.body, rv.created_at, rv.sound, rv.composition, rv.lyrics, rv.originality, rv.atmosphere,
+        SELECT rv.id, rv.release_id, rv.username, u.avatar, rv.release_title AS release, rv.artist, rv.score, rv.title, rv.pros, rv.cons, rv.body, rv.created_at, rv.sound, rv.composition, rv.lyrics, rv.originality, rv.atmosphere,
           (SELECT COUNT(*) FROM review_likes rl WHERE rl.review_id=rv.id) AS likes_count,
           (SELECT COUNT(*) FROM review_comments rc WHERE rc.review_id=rv.id) AS comments_count,
           CASE WHEN ? IS NOT NULL AND EXISTS(SELECT 1 FROM review_likes rl WHERE rl.review_id=rv.id AND rl.user_id=?) THEN 1 ELSE 0 END AS liked_by_me,
@@ -357,7 +357,7 @@ export async function onRequest(context) {
       const profile = await db.prepare("SELECT id,username,created_at,avatar FROM users WHERE username=? COLLATE NOCASE").bind(username).first();
       if (!profile) return json({ error: "Пользователь не найден" }, 404);
       const stats = await db.prepare("SELECT (SELECT COUNT(*) FROM reviews WHERE user_id=?) AS reviews_count,(SELECT COUNT(*) FROM ratings WHERE user_id=?) AS ratings_count,(SELECT ROUND(AVG(score),1) FROM reviews WHERE user_id=?) AS average_score").bind(profile.id,profile.id,profile.id).first();
-      const items = await db.prepare("SELECT id,username,release_title AS release,artist,score,title,pros,cons,body,created_at,sound,composition,lyrics,originality,atmosphere,(SELECT COUNT(*) FROM review_likes rl WHERE rl.review_id=reviews.id) AS likes_count,(SELECT COUNT(*) FROM review_comments rc WHERE rc.review_id=reviews.id) AS comments_count, CASE WHEN ? IS NOT NULL AND reviews.user_id=? THEN 1 ELSE 0 END AS can_edit FROM reviews WHERE user_id=? ORDER BY created_at DESC").bind(user?.id || null,user?.id || null,profile.id).all();
+      const items = await db.prepare("SELECT id,release_id,username,release_title AS release,artist,score,title,pros,cons,body,created_at,sound,composition,lyrics,originality,atmosphere,(SELECT COUNT(*) FROM review_likes rl WHERE rl.review_id=reviews.id) AS likes_count,(SELECT COUNT(*) FROM review_comments rc WHERE rc.review_id=reviews.id) AS comments_count, CASE WHEN ? IS NOT NULL AND reviews.user_id=? THEN 1 ELSE 0 END AS can_edit FROM reviews WHERE user_id=? ORDER BY created_at DESC").bind(user?.id || null,user?.id || null,profile.id).all();
       return json({ profile: { username: profile.username, created_at: profile.created_at, avatar: profile.avatar || null, reviews_count: stats.reviews_count || 0, ratings_count: stats.ratings_count || 0, average_score: stats.average_score, reviews: items.results || [] } });
     }
 
@@ -568,6 +568,23 @@ export async function onRequest(context) {
           .bind(score,...criteria,user.id,releaseId).run();
       }
       return json({ ok: true });
+    }
+
+    const editReviewRatingMatch = path.match(/^\/api\/reviews\/([a-f0-9-]+)\/rating$/i);
+    if (editReviewRatingMatch && method === "PATCH") {
+      if (!user) return json({ error: "Войдите в аккаунт" }, 401);
+      const reviewId = editReviewRatingMatch[1];
+      const reviewRow = await db.prepare("SELECT release_id FROM reviews WHERE id=? AND user_id=?").bind(reviewId,user.id).first();
+      if (!reviewRow) return json({ error: "Рецензия не найдена или принадлежит другому пользователю" }, 404);
+      if (reviewRow.release_id === null || reviewRow.release_id === undefined) return json({ error: "У этой рецензии нет связанного релиза" }, 400);
+      const criteria = ["sound","composition","lyrics","originality","atmosphere"].map(k => Number(body[k]));
+      if (criteria.some(v => !Number.isInteger(v) || v < 0 || v > 10)) return json({ error: "Каждый критерий должен быть от 0 до 10" }, 400);
+      const score = (criteria[0]+criteria[1]+criteria[2]+criteria[3])*(1+criteria[4]*0.125);
+      await db.batch([
+        db.prepare("UPDATE reviews SET score=?,sound=?,composition=?,lyrics=?,originality=?,atmosphere=? WHERE id=? AND user_id=?").bind(score,...criteria,reviewId,user.id),
+        db.prepare("UPDATE ratings SET score=?,sound=?,composition=?,lyrics=?,originality=?,atmosphere=? WHERE user_id=? AND release_id=?").bind(score,...criteria,user.id,reviewRow.release_id)
+      ]);
+      return json({ ok: true, score });
     }
 
     const editReviewMatch = path.match(/^\/api\/reviews\/([a-f0-9-]+)$/i);
