@@ -267,6 +267,27 @@ export async function onRequest(context) {
       return json({ ok: true, release_id: next.id });
     }
 
+    const deleteReleaseMatch = path.match(/^\/api\/admin\/releases\/(\d+)$/);
+    if (deleteReleaseMatch && method === "DELETE") {
+      if (!isAdmin(user)) return json({ error: "Доступ только для администратора TOWHELL" }, 403);
+      const releaseId = Number(deleteReleaseMatch[1]);
+      const release = await db.prepare("SELECT title,artist FROM releases WHERE id=?").bind(releaseId).first();
+      if (!release) return json({ error: "Релиз не найден" }, 404);
+      await db.batch([
+        db.prepare("DELETE FROM ratings WHERE release_id=?").bind(releaseId),
+        db.prepare("DELETE FROM reviews WHERE release_title=? AND artist=?").bind(release.title,release.artist),
+        db.prepare("DELETE FROM releases WHERE id=?").bind(releaseId)
+      ]);
+      return json({ ok: true });
+    }
+    const deleteReviewMatch = path.match(/^\/api\/admin\/reviews\/([a-f0-9-]+)$/i);
+    if (deleteReviewMatch && method === "DELETE") {
+      if (!isAdmin(user)) return json({ error: "Доступ только для администратора TOWHELL" }, 403);
+      const result = await db.prepare("DELETE FROM reviews WHERE id=?").bind(deleteReviewMatch[1]).run();
+      if (!result.meta || result.meta.changes === 0) return json({ error: "Рецензия не найдена" }, 404);
+      return json({ ok: true });
+    }
+
     const ratingMatch = path.match(/^\/api\/releases\/(\d+)\/rating$/);
     if (ratingMatch && method === "POST") {
       if (!user) return json({ error: "Войдите, чтобы оценивать" }, 401);
