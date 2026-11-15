@@ -121,7 +121,30 @@ $("#adminReviews")?.addEventListener("click",async e=>{const btn=e.target.closes
 function criteriaFields(prefix){return [["sound","Рифмы / образы","Содержание текста, рифмовка, метафоры и запоминающиеся образы."],["composition","Структура / ритмика","Построение трека, развитие, динамика, ритмика и флоу."],["lyrics","Реализация стиля","Насколько убедительно и качественно воплощён выбранный стиль: бит, звук, исполнение и продакшн."],["originality","Индивидуальность / харизма","Самобытность артиста, узнаваемость, подача и эмоциональная убедительность."],["atmosphere","Атмосфера / вайб","Субъективное общее впечатление от релиза; этот балл задаёт множитель."]].map(([key,label,help])=>`<label class="field criterion"><span>${label.toUpperCase()} · 0–10</span><input id="${prefix}${key}" type="number" min="0" max="10" step="1" required placeholder="Например, 8"><small>${help}</small></label>`).join("")}
 function calculateScore(c){return (c.sound+c.composition+c.lyrics+c.originality)*(1+c.atmosphere*0.125)}
 function readCriteria(prefix){return Object.fromEntries(["sound","composition","lyrics","originality","atmosphere"].map(k=>[k,Number($("#"+prefix+k).value)]))}
-function rateModal(r){modal(`<small>${r.type.toUpperCase()} · ${r.year}</small><h2>${r.title}</h2><p>${r.artist}</p><p>${r.description}</p><p class="form-intro">Первые четыре критерия — по 10 баллов. Атмосфера / вайб задаёт множитель от ×1 до ×2,25. Максимум — 90 баллов.</p>${criteriaFields("rate_")}<button class="lime" id="rateGo">Сохранить оценку</button>`);$("#rateGo").onclick=async()=>{if(!token)return auth();const criteria=readCriteria("rate_");if(Object.values(criteria).some(v=>!Number.isInteger(v)||v<0||v>10)){toast("Заполни все критерии целыми числами от 0 до 10");return;}try{await api(`/releases/${r.id}/rating`,{method:"POST",body:JSON.stringify(criteria)});await load();close();toast("Оценка сохранена")}catch(e){toast(e.message)}}}
+function rateModal(r){
+  modal(`<div class="rating-modal">
+    <div class="rating-hero">
+      <div class="rating-cover">${r.cover&&/^https:\/\//i.test(r.cover)?`<img src="${r.cover}" alt="">`:`<span>${String(r.art||r.artist||"♪").slice(0,1)}</span>`}</div>
+      <div class="rating-track"><small>ОЦЕНКА РЕЛИЗА · ${r.type.toUpperCase()}</small><h2>${r.title}</h2><p>${r.artist} · ${r.year}</p></div>
+    </div>
+    <div class="rating-intro"><div><b>Твоя оценка</b><span>Поставь баллы по пяти критериям</span></div><div class="rating-total"><strong id="ratingScorePreview">—</strong><small>/ 90</small></div></div>
+    <div class="rating-progress"><span id="ratingScoreBar"></span></div>
+    <div class="rating-criteria-heading"><h3>Критерии оценки</h3><small>КАЖДЫЙ ОТ 0 ДО 10</small></div>
+    ${criteriaFields("rate_")}
+    <div class="rating-formula">Первые четыре критерия формируют базовую оценку. Атмосфера / вайб умножает её от ×1 до ×2,25.</div>
+    <button class="lime rating-submit" id="rateGo">Сохранить оценку <span>↗</span></button>
+  </div>`);
+  const updatePreview=()=>{
+    const keys=["sound","composition","lyrics","originality","atmosphere"];
+    const values=keys.map(k=>$("#rate_"+k).value.trim());
+    const complete=values.every(v=>v!==""&&Number.isInteger(Number(v))&&Number(v)>=0&&Number(v)<=10);
+    const score=complete?calculateScore(Object.fromEntries(keys.map((k,i)=>[k,Number(values[i])]))):null;
+    $("#ratingScorePreview").textContent=score===null?"—":score.toFixed(1);
+    $("#ratingScoreBar").style.width=(score===null?0:score/90*100)+"%";
+  };
+  $(".rating-modal .criterion input").forEach(input=>input.addEventListener("input",updatePreview));
+  $("#rateGo").onclick=async()=>{if(!token)return auth();const criteria=readCriteria("rate_");if(Object.values(criteria).some(v=>!Number.isInteger(v)||v<0||v>10)){toast("Заполни все критерии целыми числами от 0 до 10");return;}try{await api(`/releases/${r.id}/rating`,{method:"POST",body:JSON.stringify(criteria)});await load();close();toast("Оценка сохранена")}catch(e){toast(e.message)}};
+}
 function writeReview(){if(!token)return auth();modal(`<small>ТВОЁ МНЕНИЕ</small><h2>Новая рецензия</h2><label class="field"><span>РЕЛИЗ</span><select id="rid">${releases.map(r=>`<option value="${r.id}">${r.title} — ${r.artist}</option>`).join("")}</select></label><label class="field"><span>ЗАГОЛОВОК</span><input id="rtitle" maxlength="100" placeholder="Коротко о главном"></label><h3>Оценка по критериям</h3><p class="form-intro">Четыре основных критерия — по 10 баллов. Атмосфера / вайб даёт множитель от ×1 до ×2,25. Максимум — 90 баллов.</p>${criteriaFields("review_")}<label class="field"><span>ПЛЮСЫ</span><textarea id="rpros" maxlength="1000" placeholder="Что особенно удалось?"></textarea></label><label class="field"><span>МИНУСЫ</span><textarea id="rcons" maxlength="1000" placeholder="Что можно было сделать лучше?"></textarea></label><label class="field"><span>РЕЦЕНЗИЯ · ОТ 50 ДО 5000 СИМВОЛОВ</span><textarea id="rbody" maxlength="5000" placeholder="Расскажи о звучании, идеях и впечатлениях..."></textarea></label><button class="lime" id="publish">Опубликовать рецензию</button>`);$("#publish").onclick=async()=>{try{const criteria=readCriteria("review_");if(Object.values(criteria).some(v=>!Number.isInteger(v)||v<0||v>10)){toast("Заполни все критерии целыми числами от 0 до 10");return;}await api("/reviews",{method:"POST",body:JSON.stringify({releaseId:Number($("#rid").value),title:$("#rtitle").value,pros:$("#rpros").value,cons:$("#rcons").value,body:$("#rbody").value,...criteria})});await load();close();toast("Рецензия опубликована")}catch(e){toast(e.message)}}}
 $("#charts")?.addEventListener("click",e=>{const b=e.target.closest("[data-top]");if(!b)return;activeTop=b.dataset.top;renderTop()});
 document.addEventListener("click",e=>{const link=e.target.closest("button[data-profile]");if(!link)return;e.preventDefault();e.stopPropagation();e.stopImmediatePropagation();loadProfile(link.dataset.profile);},true);
