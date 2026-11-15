@@ -1,0 +1,189 @@
+const encoder = new TextEncoder();
+
+const SEEDS = [
+  { id: 1, title: "Ночной город", artist: "MIRA", type: "Альбом", year: 2026, tag: "NEW", art: "M", cover: "linear-gradient(135deg,#f15d52,#662d75)", description: "Синтезаторы, ночные маршруты и честные тексты.", score: 8.7 },
+  { id: 2, title: "Пыль на виниле", artist: "KOSMO", type: "Альбом", year: 2026, tag: "TOP", art: "K", cover: "linear-gradient(145deg,#e5a34b,#9a432c)", description: "Тёплый звук и меланхоличная электроника.", score: 9.1 },
+  { id: 3, title: "Без адреса", artist: "СЕВЕР", type: "Сингл", year: 2026, tag: "SINGLE", art: "С", cover: "linear-gradient(135deg,#8cacc5,#243c59)", description: "Минималистичная история о поиске себя.", score: 8.2 },
+  { id: 4, title: "Параллели", artist: "LILAC", type: "Альбом", year: 2025, tag: "EDITOR'S", art: "L", cover: "linear-gradient(135deg,#b9c4a1,#607c66)", description: "Мягкая психоделия и воздушный вокал.", score: 9.4 }
+];
+
+function json(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" }
+  });
+}
+function b64url(bytes) {
+  let binary = "";
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+function fromB64url(value) {
+  const base = value.replace(/-/g, "+").replace(/_/g, "/");
+  const binary = atob(base + "=".repeat((4 - base.length % 4) % 4));
+  return Uint8Array.from(binary, c => c.charCodeAt(0));
+}
+function hex(bytes) {
+  return [...bytes].map(b => b.toString(16).padStart(2, "0")).join("");
+}
+function unhex(value) {
+  return new Uint8Array((value.match(/.{1,2}/g) || []).map(x => parseInt(x, 16)));
+}
+function randomHex(length = 16) {
+  const bytes = new Uint8Array(length);
+  crypto.getRandomValues(bytes);
+  return hex(bytes);
+}
+async function passwordHash(password, saltHex) {
+  const key = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt: unhex(saltHex), iterations: 120000, hash: "SHA-256" },
+    key, 256
+  );
+  return hex(new Uint8Array(bits));
+}
+async function hmacKey(secret) {
+  return crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
+}
+async function makeToken(user, secret) {
+  const payload = b64url(encoder.encode(JSON.stringify({ id: user.id, exp: Date.now() + 7 * 864e5 })));
+  const key = await hmacKey(secret);
+  const signature = new Uint8Array(await crypto.subtle.sign("HMAC", key, encoder.encode(payload)));
+  return payload + "." + b64url(signature);
+}
+async function getUser(request, db, secret) {
+  try {
+    const raw = (request.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
+    const [payload, signature] = raw.split(".");
+    if (!payload || !signature) return null;
+    const key = await hmacKey(secret);
+    const valid = await crypto.subtle.verify("HMAC", key, fromB64url(signature), encoder.encode(payload));
+    if (!valid) return null;
+    const data = JSON.parse(new TextDecoder().decode(fromB64url(payload)));
+    if (!data.exp || data.exp <= Date.now()) return null;
+    return await db.prepare("SELECT id, username, email FROM users WHERE id = ?").bind(data.id).first();
+  } catch {
+    return null;
+  }
+}
+async function readBody(request) {
+  try { return await request.json(); } catch { return {}; }
+}
+async function ensureSeeds(db) {
+  const row = await db.prepare("SELECT COUNT(*) AS n FROM releases").first();
+  if (row && row.n > 0) return;
+  const stmt = db.prepare(
+    "INSERT OR IGNORE INTO releases (id,title,artist,type,year,tag,art,cover,description,score) VALUES (?,?,?,?,?,?,?,?,?,?)"
+  );
+  for (const r of SEEDS) {
+    await stmt.bind(r.id,r.title,r.artist,r.type,r.year,r.tag,r.art,r.cover,r.description,r.score).run();
+  }
+}
+function publicUser(user) {
+  return { id: user.id, username: user.username, email: user.email };
+}
+
+export async function onRequest(context) {
+  const { request, env } = context;
+  if (!env.GSQZT_DB) return json({ error: "База данных GSQZT не подключена. Проверь D1 binding с именем GSQZT_DB." }, 503);
+  if (!env.JWT_SECRET || env.JWT_SECRET.length < 32) return json({ error: "Не задан JWT_SECRET (минимум 32 символа) в настройках Pages." }, 503);
+
+  const url = new URL(request.url);
+  const path = url.pathname;
+  const method = request.method.toUpperCase();
+  const db = env.GSQZT_DB;
+
+  try {
+    await ensureSeeds(db);
+    if (method === "OPTIONS") return new Response(null, { status: 204 });
+    const body = method === "POST" ? await readBody(request) : {};
+    const user = await getUser(request, db, env.JWT_SECRET);
+
+    if (path === "/api/health" && method === "GET") return json({ ok: true });
+
+    if (path === "/api/auth/register" && method === "POST") {
+      const username = String(body.username || "").trim();
+      const email = String(body.email || "").trim().toLowerCase();
+      const password = String(body.password || "");
+      if (username.length < 3 || username.length > 24 || !/^[\p{L}\p{N}_.-]+$/u.test(username))
+        return json({ error: "Ник: 3–24 символа; разрешены буквы, цифры, _, . и -" }, 400);
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || password.length < 8 || password.length > 72)
+        return json({ error: "Проверь email и пароль (8–72 символа)" }, 400);
+      const existing = await db.prepare("SELECT id FROM users WHERE email = ? COLLATE NOCASE OR username = ? COLLATE NOCASE")
+        .bind(email, username).first();
+      if (existing) return json({ error: "Ник или email уже занят" }, 409);
+      const id = crypto.randomUUID();
+      const salt = randomHex(16);
+      const passHash = await passwordHash(password, salt);
+      await db.prepare("INSERT INTO users (id,username,email,salt,password_hash,created_at) VALUES (?,?,?,?,?,?)")
+        .bind(id, username, email, salt, passHash, new Date().toISOString()).run();
+      const newUser = { id, username, email };
+      return json({ token: await makeToken(newUser, env.JWT_SECRET), user: publicUser(newUser) }, 201);
+    }
+
+    if (path === "/api/auth/login" && method === "POST") {
+      const identity = String(body.identity || "").trim().toLowerCase();
+      const record = await db.prepare("SELECT * FROM users WHERE email = ? COLLATE NOCASE OR username = ? COLLATE NOCASE")
+        .bind(identity, identity).first();
+      if (!record) return json({ error: "Неверный логин или пароль" }, 401);
+      const candidate = await passwordHash(String(body.password || ""), record.salt);
+      if (candidate !== record.password_hash) return json({ error: "Неверный логин или пароль" }, 401);
+      const safe = publicUser(record);
+      return json({ token: await makeToken(safe, env.JWT_SECRET), user: safe });
+    }
+
+    if (path === "/api/me" && method === "GET")
+      return user ? json({ user: publicUser(user) }) : json({ error: "Войдите в аккаунт" }, 401);
+
+    if (path === "/api/releases" && method === "GET") {
+      const releases = await db.prepare(`
+        SELECT r.*,
+          COALESCE(ROUND(AVG(rt.score),1), r.score) AS score
+        FROM releases r LEFT JOIN ratings rt ON rt.release_id = r.id
+        GROUP BY r.id ORDER BY r.id
+      `).all();
+      return json({ releases: releases.results || [] });
+    }
+
+    if (path === "/api/reviews" && method === "GET") {
+      const reviews = await db.prepare(`
+        SELECT rv.id, rv.username, rv.release_title AS release, rv.artist, rv.score, rv.body, rv.created_at
+        FROM reviews rv ORDER BY rv.created_at DESC
+      `).all();
+      return json({ reviews: reviews.results || [] });
+    }
+
+    const ratingMatch = path.match(/^\/api\/releases\/(\d+)\/rating$/);
+    if (ratingMatch && method === "POST") {
+      if (!user) return json({ error: "Войдите, чтобы оценивать" }, 401);
+      const releaseId = Number(ratingMatch[1]);
+      const score = Number(body.score);
+      if (!Number.isInteger(score) || score < 1 || score > 10) return json({ error: "Оценка должна быть от 1 до 10" }, 400);
+      const release = await db.prepare("SELECT id FROM releases WHERE id = ?").bind(releaseId).first();
+      if (!release) return json({ error: "Релиз не найден" }, 404);
+      await db.prepare(`
+        INSERT INTO ratings (user_id,release_id,score) VALUES (?,?,?)
+        ON CONFLICT(user_id,release_id) DO UPDATE SET score=excluded.score
+      `).bind(user.id, releaseId, score).run();
+      return json({ ok: true });
+    }
+
+    if (path === "/api/reviews" && method === "POST") {
+      if (!user) return json({ error: "Войдите, чтобы писать рецензии" }, 401);
+      const releaseId = Number(body.releaseId);
+      const score = Number(body.score);
+      const text = String(body.body || "").trim();
+      const release = await db.prepare("SELECT title,artist FROM releases WHERE id = ?").bind(releaseId).first();
+      if (!release || !Number.isInteger(score) || score < 1 || score > 10 || text.length < 20 || text.length > 5000)
+        return json({ error: "Проверь релиз, оценку и длину текста (20–5000)" }, 400);
+      const id = crypto.randomUUID();
+      await db.prepare("INSERT INTO reviews (id,user_id,username,release_title,artist,score,body,created_at) VALUES (?,?,?,?,?,?,?,?)")
+        .bind(id, user.id, user.username, release.title, release.artist, score, text, new Date().toISOString()).run();
+      return json({ ok: true }, 201);
+    }
+
+    return json({ error: "API endpoint not found" }, 404);
+  } catch (error) {
+    return json({ error: "Ошибка API: " + (error && error.message ? error.message : "неизвестная ошибка") }, 500);
+  }
+}
