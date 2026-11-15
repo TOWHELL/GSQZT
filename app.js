@@ -60,7 +60,7 @@ function renderSearch(value){
 }
 
 async function saveAvatar(file){
-  if(!file||!/^image\\/(png|jpeg|webp)$/.test(file.type)){toast("Выбери PNG, JPG или WEBP");return;}
+  if(!file||!/^image\/(png|jpeg|webp)$/.test(file.type)){toast("Выбери PNG, JPG или WEBP");return;}
   if(file.size>5*1024*1024){toast("Файл слишком большой. Максимум 5 МБ");return;}
   try{
     const image=await new Promise((resolve,reject)=>{const img=new Image(),url=URL.createObjectURL(file);img.onload=()=>{URL.revokeObjectURL(url);resolve(img)};img.onerror=()=>{URL.revokeObjectURL(url);reject(Error("Не удалось открыть изображение"))};img.src=url});
