@@ -289,6 +289,17 @@ export async function onRequest(context) {
       return json({ ok: true, release_id: next.id });
     }
 
+    const updateCoverMatch = path.match(/^\/api\/admin\/releases\/(\d+)\/cover$/);
+    if (updateCoverMatch && method === "PATCH") {
+      if (!isAdmin(user)) return json({ error: "Доступ только для администратора TOWHELL" }, 403);
+      const coverUrl = String(body.cover_url || "").trim();
+      if (!/^https:\/\/[^\s"'<>]+$/i.test(coverUrl) || coverUrl.length > 2000)
+        return json({ error: "Вставь прямую HTTPS-ссылку на изображение" }, 400);
+      const result = await db.prepare("UPDATE releases SET cover=? WHERE id=?").bind(coverUrl, Number(updateCoverMatch[1])).run();
+      if (!result.meta || result.meta.changes === 0) return json({ error: "Релиз не найден" }, 404);
+      return json({ ok: true });
+    }
+
     const deleteReleaseMatch = path.match(/^\/api\/admin\/releases\/(\d+)$/);
     if (deleteReleaseMatch && method === "DELETE") {
       if (!isAdmin(user)) return json({ error: "Доступ только для администратора TOWHELL" }, 403);
