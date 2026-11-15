@@ -1,5 +1,4 @@
 const encoder = new TextEncoder();
-let databaseReadyPromise = null;
 
 const SEEDS = [
   { id: 1, title: "Ночной город", artist: "MIRA", type: "Альбом", year: 2026, tag: "NEW", art: "M", cover: "linear-gradient(135deg,#f15d52,#662d75)", description: "Синтезаторы, ночные маршруты и честные тексты.", score: 8.7 },
@@ -163,22 +162,6 @@ async function ensureNotificationsTable(db) {
     await db.prepare("ALTER TABLE notifications_v2 RENAME TO notifications").run();
   }
 }
-async function ensurePerformanceIndexes(db) {
-  const indexes = [
-    "CREATE INDEX IF NOT EXISTS idx_reviews_created_at ON reviews(created_at)",
-    "CREATE INDEX IF NOT EXISTS idx_reviews_user_release ON reviews(user_id,release_id)",
-    "CREATE INDEX IF NOT EXISTS idx_review_comments_review_created ON review_comments(review_id,created_at)",
-    "CREATE INDEX IF NOT EXISTS idx_review_comments_parent ON review_comments(parent_comment_id)",
-    "CREATE INDEX IF NOT EXISTS idx_review_likes_review ON review_likes(review_id)",
-    "CREATE INDEX IF NOT EXISTS idx_notifications_recipient_created ON notifications(recipient_user_id,created_at)",
-    "CREATE INDEX IF NOT EXISTS idx_notifications_recipient_read ON notifications(recipient_user_id,read_at)",
-    "CREATE INDEX IF NOT EXISTS idx_user_follows_followed ON user_follows(followed_user_id)",
-    "CREATE INDEX IF NOT EXISTS idx_favorites_user_created ON favorites(user_id,created_at)",
-    "CREATE INDEX IF NOT EXISTS idx_submissions_status_created ON release_submissions(status,created_at)"
-  ];
-  for (const sql of indexes) await db.prepare(sql).run();
-}
-
 async function ensureSubmissionTables(db) {
   await db.prepare(`
     CREATE TABLE IF NOT EXISTS release_submissions (
@@ -204,22 +187,16 @@ export async function onRequest(context) {
 
   try {
     if (method === "OPTIONS") return new Response(null, { status: 204 });
-    if (!databaseReadyPromise) {
-      databaseReadyPromise = (async () => {
-        await ensureSeeds(db);
-        await ensureAvatarColumn(db);
-        await ensureReleaseListeningColumn(db);
-        await ensureReleaseGenreColumn(db);
-        await ensureSubmissionTables(db);
-        await ensureCommunityFeatures(db);
-        await ensureNotificationsTable(db);
-        await ensureRatingColumns(db);
-        await ensureScoreScale(db);
-        await ensureAtmosphereMultiplier(db);
-        await ensurePerformanceIndexes(db);
-      })().catch(error => { databaseReadyPromise = null; throw error; });
-    }
-    await databaseReadyPromise;
+    await ensureSeeds(db);
+    await ensureAvatarColumn(db);
+    await ensureReleaseListeningColumn(db);
+    await ensureReleaseGenreColumn(db);
+    await ensureSubmissionTables(db);
+    await ensureCommunityFeatures(db);
+    await ensureNotificationsTable(db);
+    await ensureRatingColumns(db);
+    await ensureScoreScale(db);
+    await ensureAtmosphereMultiplier(db);
     const body = ["POST","PATCH"].includes(method) ? await readBody(request) : {};
     const user = await getUser(request, db, env.JWT_SECRET);
 
