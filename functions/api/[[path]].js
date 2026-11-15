@@ -200,7 +200,7 @@ export async function onRequest(context) {
     if (path === "/api/me/avatar" && method === "PATCH") {
       if (!user) return json({ error: "Войдите в аккаунт" }, 401);
       const avatar = String(body.avatar || "");
-      if (!/^data:image\\/jpeg;base64,[A-Za-z0-9+/]+=*$/.test(avatar) || avatar.length > 700000)
+      if (!/^data:image\/jpeg;base64,[A-Za-z0-9+/]+=*$/.test(avatar) || avatar.length > 700000)
         return json({ error: "Изображение слишком большое или имеет неподдерживаемый формат" }, 400);
       await db.prepare("UPDATE users SET avatar=? WHERE id=?").bind(avatar,user.id).run();
       return json({ ok: true, avatar });
