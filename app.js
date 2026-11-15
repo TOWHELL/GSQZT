@@ -125,7 +125,7 @@ async function loadAdminUsers(){
   if(!host)return;
   try{
     const d=await api("/admin/users");
-    host.innerHTML=(d.users||[]).map(u=>`<article class="review admin-item"><div><h3>${escapeHTML(u.username)}</h3><p>${escapeHTML(u.email)} · Регистрация: ${u.created_at?new Date(u.created_at).toLocaleDateString("ru-RU"):"—"}</p><p>Рецензий: ${Number(u.reviews_count)||0} · Оценок: ${Number(u.ratings_count)||0}</p></div><button class="danger" data-delete-user="${encodeURIComponent(u.id)}">Удалить аккаунт</button></article>`).join("")||"<p>Пользователей пока нет.</p>";
+    host.innerHTML=(d.users||[]).map(u=>`<article class="review admin-item"><div><h3>${escapeHTML(u.username)}</h3><p>Регистрация: ${u.created_at?new Date(u.created_at).toLocaleDateString("ru-RU"):"—"}</p><p>Рецензий: ${Number(u.reviews_count)||0} · Оценок: ${Number(u.ratings_count)||0}</p></div><button class="danger" data-delete-user="${encodeURIComponent(u.id)}">Удалить аккаунт</button></article>`).join("")||"<p>Пользователей пока нет.</p>";
   }catch(e){host.textContent=e.message;}
 }
 function renderAdminContent(){
