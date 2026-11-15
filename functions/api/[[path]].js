@@ -107,7 +107,8 @@ export async function onRequest(context) {
   const db = env.GSQZT_DB;
 
   try {
-    await ensureSeeds(db);\n    await ensureSubmissionTables(db);
+    await ensureSeeds(db);
+    await ensureSubmissionTables(db);
     if (method === "OPTIONS") return new Response(null, { status: 204 });
     const body = method === "POST" ? await readBody(request) : {};
     const user = await getUser(request, db, env.JWT_SECRET);
