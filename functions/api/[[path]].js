@@ -237,6 +237,16 @@ export async function onRequest(context) {
       return json({ reviews: reviews.results || [] });
     }
 
+    const profileMatch = path.match(/^\/api\/users\/([^/]+)$/);
+    if (profileMatch && method === "GET") {
+      const username = decodeURIComponent(profileMatch[1]);
+      const profile = await db.prepare("SELECT id,username,created_at FROM users WHERE username=? COLLATE NOCASE").bind(username).first();
+      if (!profile) return json({ error: "Пользователь не найден" }, 404);
+      const stats = await db.prepare("SELECT (SELECT COUNT(*) FROM reviews WHERE user_id=?) AS reviews_count,(SELECT COUNT(*) FROM ratings WHERE user_id=?) AS ratings_count,(SELECT ROUND(AVG(score),1) FROM reviews WHERE user_id=?) AS average_score").bind(profile.id,profile.id,profile.id).first();
+      const items = await db.prepare("SELECT id,username,release_title AS release,artist,score,title,pros,cons,body,created_at,sound,composition,lyrics,originality,atmosphere FROM reviews WHERE user_id=? ORDER BY created_at DESC").bind(profile.id).all();
+      return json({ profile: { username: profile.username, created_at: profile.created_at, reviews_count: stats.reviews_count || 0, ratings_count: stats.ratings_count || 0, average_score: stats.average_score, reviews: items.results || [] } });
+    }
+
 
     if (path === "/api/submissions" && method === "POST") {
       if (!user) return json({ error: "Войдите, чтобы предложить релиз" }, 401);
