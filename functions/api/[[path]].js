@@ -282,9 +282,7 @@ export async function onRequest(context) {
       await db.batch([
         db.prepare("INSERT INTO releases (id,title,artist,type,year,tag,art,cover,description,score) VALUES (?,?,?,?,?,?,?,?,?,?)")
           .bind(next.id,submission.title,submission.artist,submission.type,submission.year,submission.genre || "COMMUNITY",art,
-            "linear-gradient(135deg,#d4fa45,#53652a)",submission.description + (submission.listening_url ? "\
-\
-Слушать: " + submission.listening_url : ""),0),
+            "linear-gradient(135deg,#d4fa45,#53652a)",submission.description + (submission.listening_url ? "\\n\\nСлушать: " + submission.listening_url : ""),0),
         db.prepare("UPDATE release_submissions SET status='approved',reviewed_at=?,reviewed_by=? WHERE id=?")
           .bind(new Date().toISOString(),user.id,submissionId)
       ]);
