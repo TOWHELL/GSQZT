@@ -351,7 +351,7 @@ export async function onRequest(context) {
           (SELECT COUNT(*) FROM review_likes rl WHERE rl.review_id=rv.id) AS likes_count,
           (SELECT COUNT(*) FROM review_comments rc WHERE rc.review_id=rv.id) AS comments_count,
           CASE WHEN ? IS NOT NULL AND EXISTS(SELECT 1 FROM review_likes rl WHERE rl.review_id=rv.id AND rl.user_id=?) THEN 1 ELSE 0 END AS liked_by_me,
-          CASE WHEN ? IS NOT NULL AND rv.user_id=? THEN 1 ELSE 0 END AS can_edit
+          CASE WHEN ? IS NOT NULL AND rv.user_id=? THEN 1 ELSE 0 END AS can_edit, CASE WHEN rv.id=(SELECT pinned_review_id FROM users WHERE id=rv.user_id) THEN 1 ELSE 0 END AS is_pinned
         FROM reviews rv JOIN users u ON u.id=rv.user_id ORDER BY rv.created_at DESC
       `).bind(user?.id || null,user?.id || null,user?.id || null,user?.id || null).all();
       return json({ reviews: reviews.results || [] });
