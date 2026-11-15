@@ -25,7 +25,7 @@ function renderReviewList(){
   if(activeReviewSort==="popular")rows.sort((a,b)=>(Number(b.likes_count)||0)-(Number(a.likes_count)||0)||Number(b.id)-Number(a.id));
   else rows.sort((a,b)=>Number(b.id)-Number(a.id));
   box.innerHTML=rows.map(review).join("")||"<p>Рецензий пока нет.</p>";
-  $(".review-sort").forEach(b=>b.classList.toggle("active",b.dataset.reviewSort===activeReviewSort));
+  $$(".review-sort").forEach(b=>b.classList.toggle("active",b.dataset.reviewSort===activeReviewSort));
 }
 let activeTop="all";
 function renderTop(){
