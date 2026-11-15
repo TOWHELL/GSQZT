@@ -64,9 +64,19 @@ function renderTop(){
     html=rows.map((r,i)=>`<div class="chartrow"><b>${String(i+1).padStart(2,"0")}</b>${cover(r)}<div><h3>${r.title}</h3><p>${r.artist} · ${r.type}</p>${listeningLink(r)}</div><span class="score">${Number(r.score).toFixed(1)}/90</span></div>`).join("");
   }else if(activeTop==="artists"){
     const map=new Map();
-    releases.forEach(r=>{const key=r.artist;const x=map.get(key)||{artist:key,total:0,count:0,releases:[]};x.total+=Number(r.score)||0;x.count++;x.releases.push(r.title);map.set(key,x)});
-    rows=[...map.values()].map(x=>({...x,score:x.total/x.count})).sort((a,b)=>b.score-a.score);
-    desc.textContent="Артисты с самыми высокими средними оценками релизов.";
+    releases.forEach(r=>{
+      const names=[...new Set(String(r.artist||"").split(/[,;]/).map(name=>name.trim()).filter(Boolean).map(name=>name.replace(/\\s+/g," ")))];
+      names.forEach(name=>{
+        const key=name.toLocaleLowerCase("ru");
+        const x=map.get(key)||{artist:name,total:0,count:0,releases:[]};
+        x.total+=Number(r.score)||0;
+        x.count++;
+        if(!x.releases.includes(r.title))x.releases.push(r.title);
+        map.set(key,x);
+      });
+    });
+    rows=[...map.values()].map(x=>({...x,score:x.total/x.count})).sort((a,b)=>b.score-a.score||a.artist.localeCompare(b.artist,"ru"));
+    desc.textContent="Каждый исполнитель из совместного релиза учитывается отдельно; рейтинг считается по средним оценкам его релизов.";
     html=rows.map((r,i)=>`<div class="leader-row"><b class="leader-place">${String(i+1).padStart(2,"0")}</b><div><h3>${r.artist}</h3><p>${r.count} релиз(а): ${r.releases.join(", ")}</p></div><span class="score">${r.score.toFixed(1)}/90</span></div>`).join("");
   }else{
     const map=new Map();
