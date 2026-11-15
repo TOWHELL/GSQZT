@@ -118,3 +118,7 @@
   #charts .chartrow>.score,
   #charts .leader-row>.score{width:76px;min-width:76px;padding:7px 4px}
 }
+
+
+/* Hide score badge on cover thumbnails inside Top charts */
+#charts .chartrow .cover>b{display:none}
