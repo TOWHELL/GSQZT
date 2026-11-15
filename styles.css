@@ -196,3 +196,14 @@
  .rating-modal .criterion input{height:39px;font-size:16px}
  .rating-total strong{font-size:24px}
 }
+
+
+/* Review composer matching the rating modal */
+.review-compose .review-release{margin:18px 0 12px}
+.review-compose .review-title{margin:12px 0 20px}
+.review-writing-heading{margin:22px 0 12px;padding-top:18px;border-top:1px solid var(--line)}
+.review-writing-heading h3{margin:0 0 5px;font-size:15px}
+.review-writing-heading p{margin:0;color:var(--muted);font-size:11px}
+.review-compose .field textarea{background:#202026;border:1px solid #33333c;border-radius:8px;color:#f0efe9;padding:12px;resize:vertical;font:12px/1.6 Manrope,sans-serif}
+.review-compose .field textarea:focus,.review-compose .review-title input:focus,.review-compose .review-release select:focus{outline:1px solid var(--acid);border-color:var(--acid)}
+.review-compose .field textarea::placeholder{color:#777780}
