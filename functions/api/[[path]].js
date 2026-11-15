@@ -431,6 +431,17 @@ export async function onRequest(context) {
       return json({ ok: true, release_id: next.id });
     }
 
+    const updateReleaseGenreMatch = path.match(/^\/api\/admin\/releases\/(\d+)\/genre$/);
+    if (updateReleaseGenreMatch && method === "PATCH") {
+      if (!isAdmin(user)) return json({ error: "Доступ только для администратора TOWHELL" }, 403);
+      const releaseId = Number(updateReleaseGenreMatch[1]);
+      const genre = String(body.genre || "").trim();
+      if (genre.length > 60) return json({ error: "Жанр не должен превышать 60 символов" }, 400);
+      const result = await db.prepare("UPDATE releases SET genre=? WHERE id=?").bind(genre,releaseId).run();
+      if (!result.meta?.changes) return json({ error: "Релиз не найден" }, 404);
+      return json({ ok: true });
+    }
+
     const updateReleaseDetailsMatch = path.match(/^\/api\/admin\/releases\/(\d+)\/details$/);
     if (updateReleaseDetailsMatch && method === "PATCH") {
       if (!isAdmin(user)) return json({ error: "Доступ только для администратора TOWHELL" }, 403);
