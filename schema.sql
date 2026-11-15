@@ -59,3 +59,9 @@ VALUES
 (2,'Пыль на виниле','KOSMO','Альбом',2026,'TOP','K','linear-gradient(145deg,#e5a34b,#9a432c)','Тёплый звук и меланхоличная электроника.',9.1),
 (3,'Без адреса','СЕВЕР','Сингл',2026,'SINGLE','С','linear-gradient(135deg,#8cacc5,#243c59)','Минималистичная история о поиске себя.',8.2),
 (4,'Параллели','LILAC','Альбом',2025,'EDITOR''S','L','linear-gradient(135deg,#b9c4a1,#607c66)','Мягкая психоделия и воздушный вокал.',9.4);
+
+CREATE TABLE IF NOT EXISTS notifications (
+ id TEXT PRIMARY KEY, recipient_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ actor_user_id TEXT, actor_username TEXT NOT NULL, type TEXT NOT NULL,
+ review_id TEXT NOT NULL REFERENCES reviews(id) ON DELETE CASCADE, created_at TEXT NOT NULL, read_at TEXT
+);
