@@ -48,3 +48,36 @@
 .search-panel{margin:28px 0 12px;padding:22px;background:var(--panel);border:1px solid var(--line)}.search-panel input{width:100%;background:#111114;border:1px solid #45454d;color:var(--white);padding:17px 18px;font:inherit;font-size:15px;outline:none}.search-panel input:focus{border-color:var(--acid)}.search-hint,.search-empty{color:var(--muted);font-size:12px;line-height:1.7}.search-empty{padding:18px 0}.search-panel .search-hint{margin:10px 0 0}@media(max-width:650px){.search-panel{padding:14px}.search-panel input{font-size:13px}}
 
 .top-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:28px 0 14px}.top-tab{background:transparent;border:1px solid var(--line);padding:10px 14px;color:#aaa;font-size:11px}.top-tab.active{background:var(--acid);color:#171719;border-color:var(--acid);font-weight:800}.top-description,.top-empty{color:var(--muted);font-size:12px;line-height:1.7;margin:0 0 18px}.leader-row{display:grid;grid-template-columns:35px minmax(0,1fr) auto;gap:15px;align-items:center;border-bottom:1px solid var(--line);padding:18px 12px}.leader-place{font:16px "DM Mono";color:var(--acid)}.leader-row h3{font-size:14px;margin:0 0 5px}.leader-row p{font-size:11px;color:var(--muted);margin:0}.leader-row .score{white-space:nowrap}.leader-row .score small{font-size:9px}@media(max-width:650px){.top-tabs{gap:6px}.top-tab{padding:9px 10px;font-size:10px}.leader-row{gap:9px;padding:15px 4px}}
+
+
+/* Top charts visual polish */
+#charts .top-tabs{padding:6px;background:#17171c;border:1px solid #292930;border-radius:12px;width:fit-content;max-width:100%}
+#charts .top-tab{border:1px solid transparent;border-radius:8px;transition:background .18s ease,color .18s ease,transform .18s ease}
+#charts .top-tab:not(.active):hover{color:var(--white);background:#292930}
+#charts .top-tab.active{box-shadow:0 3px 14px #d4fa4526}
+#charts .top-description{margin:18px 0 22px;padding-left:12px;border-left:2px solid var(--acid)}
+#charts #chart{display:grid;gap:9px}
+#charts .chartrow,#charts .leader-row{position:relative;min-height:88px;padding:14px 16px;background:linear-gradient(110deg,#1b1b21,#17171b);border:1px solid #2c2c34;border-radius:12px;transition:border-color .18s ease,transform .18s ease,background .18s ease}
+#charts .chartrow:hover,#charts .leader-row:hover{transform:translateY(-2px);border-color:#777b4c;background:linear-gradient(110deg,#222329,#1a1a20)}
+#charts .chartrow> b:first-child,.leader-place{display:grid;place-items:center;width:34px;height:34px;border-radius:9px;background:#292930;color:#aaa;font:13px 'DM Mono';}
+#charts .chartrow .cover{width:58px;aspect-ratio:1;border-radius:7px;overflow:hidden;border:1px solid #ffffff20}
+#charts .chartrow .cover strong{font-size:29px}
+#charts .chartrow h3,#charts .leader-row h3{font-size:13px;letter-spacing:.01em}
+#charts .chartrow p,#charts .leader-row p{line-height:1.5;margin-top:4px}
+#charts .chartrow .score,#charts .leader-row>.score{padding:8px 10px;border:1px solid #41414a;border-radius:8px;background:#121216;font-size:15px}
+#charts .chartrow:nth-child(1),#charts .leader-row:nth-child(1){border-color:#777b4c;background:linear-gradient(105deg,#29291f,#1b1b20)}
+#charts .chartrow:nth-child(1)>b:first-child,#charts .leader-row:nth-child(1) .leader-place{background:var(--acid);color:#171719}
+#charts .chartrow:nth-child(2)>b:first-child,#charts .leader-row:nth-child(2) .leader-place{color:#e0e0e0;background:#45454d}
+#charts .chartrow:nth-child(3)>b:first-child,#charts .leader-row:nth-child(3) .leader-place{color:#d49a70;background:#49372f}
+#charts .top-empty{padding:26px 18px;border:1px dashed #41414a;border-radius:12px;text-align:center;background:#17171b}
+@media(max-width:650px){
+ #charts .top-tabs{width:100%;gap:4px}
+ #charts .top-tab{flex:1;padding:9px 5px;font-size:9px}
+ #charts .chartrow,#charts .leader-row{min-height:76px;padding:11px 9px;gap:8px;grid-template-columns:28px 48px minmax(0,1fr) auto}
+ #charts .chartrow .cover{width:48px}
+ #charts .chartrow .cover strong{font-size:23px}
+ #charts .chartrow h3,#charts .leader-row h3{font-size:11px}
+ #charts .chartrow p,#charts .leader-row p{font-size:9px;overflow-wrap:anywhere}
+ #charts .chartrow> b:first-child,.leader-place{width:27px;height:29px;font-size:11px}
+ #charts .chartrow .score,#charts .leader-row>.score{font-size:12px;padding:7px 6px}
+}
