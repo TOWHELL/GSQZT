@@ -152,7 +152,9 @@ async function ensureCommunityFeatures(db) {
   if (!(commentCols.results || []).some(c => c.name === "parent_comment_id")) await db.prepare("ALTER TABLE review_comments ADD COLUMN parent_comment_id TEXT").run();
 }
 async function ensureDirectMessages(db) {
-  await db.prepare("CREATE TABLE IF NOT EXISTS direct_messages (id TEXT PRIMARY KEY, sender_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, recipient_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, body TEXT NOT NULL, created_at TEXT NOT NULL, read_at TEXT)").run();
+  await db.prepare("CREATE TABLE IF NOT EXISTS direct_messages (id TEXT PRIMARY KEY, sender_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, recipient_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, body TEXT NOT NULL, created_at TEXT NOT NULL, read_at TEXT, edited_at TEXT)").run();
+  const messageCols=await db.prepare("PRAGMA table_info(direct_messages)").all();
+  if(!(messageCols.results||[]).some(c=>c.name==="edited_at"))await db.prepare("ALTER TABLE direct_messages ADD COLUMN edited_at TEXT").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_direct_messages_sender_created ON direct_messages(sender_user_id,created_at)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_direct_messages_recipient_created ON direct_messages(recipient_user_id,created_at)").run();
 }
@@ -311,10 +313,22 @@ export async function onRequest(context) {
       const recipient=await db.prepare("SELECT id,username,avatar FROM users WHERE username=? COLLATE NOCASE").bind(username).first();
       if(!recipient)return json({error:"Пользователь не найден"},404);
       if(recipient.id===user.id)return json({error:"Нельзя отправить сообщение самому себе"},400);
-      if(method==="POST"){const message=String(body.body||"").trim();if(!message||message.length>2000)return json({error:"Сообщение должно содержать от 1 до 2000 символов"},400);const id=crypto.randomUUID(),createdAt=new Date().toISOString();await db.prepare("INSERT INTO direct_messages (id,sender_user_id,recipient_user_id,body,created_at) VALUES (?,?,?,?,?)").bind(id,user.id,recipient.id,message,createdAt).run();return json({ok:true,id,created_at:createdAt},201);}
+      if(method==="POST"){const message=String(body.body||"").trim();if(!message||message.length>2000)return json({error:"Сообщение должно содержать от 1 до 2000 символов"},400);const id=crypto.randomUUID(),createdAt=new Date().toISOString();await db.prepare("INSERT INTO direct_messages (id,sender_user_id,recipient_user_id,body,created_at) VALUES (?,?,?,?,?)").bind(id,user.id,recipient.id,message,createdAt).run();await db.prepare("INSERT INTO notifications (id,recipient_user_id,actor_user_id,actor_username,type,review_id,created_at) VALUES (?,?,?,?,?,?,?)").bind(crypto.randomUUID(),recipient.id,user.id,user.username,"message",null,createdAt).run();return json({ok:true,id,created_at:createdAt},201);}
       await db.prepare("UPDATE direct_messages SET read_at=COALESCE(read_at,?) WHERE sender_user_id=? AND recipient_user_id=? AND read_at IS NULL").bind(new Date().toISOString(),recipient.id,user.id).run();
-      const rows=await db.prepare("SELECT id,sender_user_id,recipient_user_id,body,created_at,read_at FROM direct_messages WHERE (sender_user_id=? AND recipient_user_id=?) OR (sender_user_id=? AND recipient_user_id=?) ORDER BY created_at ASC LIMIT 500").bind(user.id,recipient.id,recipient.id,user.id).all();
+      const rows=await db.prepare("SELECT id,sender_user_id,recipient_user_id,body,created_at,read_at,edited_at FROM direct_messages WHERE (sender_user_id=? AND recipient_user_id=?) OR (sender_user_id=? AND recipient_user_id=?) ORDER BY created_at ASC LIMIT 500").bind(user.id,recipient.id,recipient.id,user.id).all();
       return json({user:{username:recipient.username,avatar:recipient.avatar},messages:(rows.results||[]).map(m=>({...m,mine:m.sender_user_id===user.id}))});
+    }
+
+    const messageIdPrefix="/api/messages/";
+    if(path.startsWith(messageIdPrefix)&&!path.startsWith(messagePrefix)&&(method==="PATCH"||method==="DELETE")){
+      if(!user)return json({error:"Войдите в аккаунт"},401);
+      const messageId=path.slice(messageIdPrefix.length);
+      if(messageId.includes("/"))return json({error:"Неверный ID сообщения"},400);
+      const message=await db.prepare("SELECT id,sender_user_id FROM direct_messages WHERE id=?").bind(messageId).first();
+      if(!message)return json({error:"Сообщение не найдено"},404);
+      if(message.sender_user_id!==user.id)return json({error:"Можно изменять или удалять только свои сообщения"},403);
+      if(method==="PATCH"){const updated=String(body.body||"").trim();if(!updated||updated.length>2000)return json({error:"Сообщение должно содержать от 1 до 2000 символов"},400);await db.prepare("UPDATE direct_messages SET body=?,edited_at=? WHERE id=? AND sender_user_id=?").bind(updated,new Date().toISOString(),messageId,user.id).run();return json({ok:true});}
+      await db.prepare("DELETE FROM direct_messages WHERE id=? AND sender_user_id=?").bind(messageId,user.id).run();return json({ok:true});
     }
 
     if (path === "/api/notifications" && method === "GET") {
