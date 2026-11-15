@@ -470,7 +470,10 @@ export async function onRequest(context) {
     const deleteReviewMatch = path.match(/^\/api\/admin\/reviews\/([a-f0-9-]+)$/i);
     if (deleteReviewMatch && method === "DELETE") {
       if (!isAdmin(user)) return json({ error: "Доступ только для администратора TOWHELL" }, 403);
-      await db.prepare("DELETE FROM review_comments WHERE review_id=?").bind(deleteReviewMatch[1]).run();
+      await db.batch([
+        db.prepare("DELETE FROM review_comments WHERE review_id=?").bind(deleteReviewMatch[1]),
+        db.prepare("DELETE FROM review_likes WHERE review_id=?").bind(deleteReviewMatch[1])
+      ]);
       const reviewToDelete = await db.prepare("SELECT user_id,release_id FROM reviews WHERE id=?").bind(deleteReviewMatch[1]).first();
       if (!reviewToDelete) return json({ error: "Рецензия не найдена" }, 404);
       await db.prepare("DELETE FROM reviews WHERE id=?").bind(deleteReviewMatch[1]).run();
@@ -516,7 +519,11 @@ export async function onRequest(context) {
       if (!user) return json({ error: "Войдите в аккаунт" }, 401);
       const existing = await db.prepare("SELECT release_id FROM reviews WHERE id=? AND user_id=?").bind(editReviewMatch[1],user.id).first();
       if (!existing) return json({ error: "Рецензия не найдена или принадлежит другому пользователю" }, 404);
-      await db.prepare("DELETE FROM reviews WHERE id=? AND user_id=?").bind(editReviewMatch[1],user.id).run();
+      await db.batch([
+        db.prepare("DELETE FROM review_comments WHERE review_id=?").bind(editReviewMatch[1]),
+        db.prepare("DELETE FROM review_likes WHERE review_id=?").bind(editReviewMatch[1]),
+        db.prepare("DELETE FROM reviews WHERE id=? AND user_id=?").bind(editReviewMatch[1],user.id)
+      ]);
       if (existing.release_id !== null && existing.release_id !== undefined) {
         const other = await db.prepare("SELECT 1 AS found FROM reviews WHERE user_id=? AND release_id=? LIMIT 1").bind(user.id,existing.release_id).first();
         if (!other) await db.prepare("DELETE FROM ratings WHERE user_id=? AND release_id=?").bind(user.id,existing.release_id).run();
