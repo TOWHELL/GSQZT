@@ -310,7 +310,11 @@ function rateModal(r){
     $("#ratingScorePreview").textContent=score===null?"—":score.toFixed(0);
     $("#ratingScoreBar").style.width=(score===null?0:score/90*100)+"%";
   };
-  $(".rating-modal .criterion input").forEach(input=>input.addEventListener("input",()=>{saveRatingDraft(r.id);updatePreview();}));
+  $(".rating-modal .criterion input").forEach(input=>{
+    const refresh=()=>{updatePreview();saveRatingDraft(r.id);};
+    input.addEventListener("input",refresh);
+    input.addEventListener("change",refresh);
+  });
   updatePreview();
   $("#rateGo").onclick=async()=>{if(!token)return auth();const criteria=readCriteria("rate_");if(Object.values(criteria).some(v=>!Number.isInteger(v)||v<0||v>10)){toast("Заполни все критерии целыми числами от 0 до 10");return;}try{await api(`/releases/${r.id}/rating`,{method:Number(r.rated_by_me)?"PATCH":"POST",body:JSON.stringify(criteria)});clearRatingDraft(r.id);await load();close();toast("Оценка сохранена")}catch(e){toast(e.message)}};
   $("#deleteMyRating")?.addEventListener("click",async()=>{if(!confirm("Удалить свою оценку этого релиза?"))return;try{await api(`/releases/${r.id}/rating`,{method:"DELETE"});clearRatingDraft(r.id);await load();close();toast("Оценка удалена")}catch(e){toast(e.message)}});
