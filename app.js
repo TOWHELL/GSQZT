@@ -265,8 +265,9 @@ $("#adminReviews")?.addEventListener("click",async e=>{const btn=e.target.closes
 function criteriaFields(prefix){return [["sound","Рифмы / образы","Содержание текста, рифмовка, метафоры и запоминающиеся образы."],["composition","Структура / ритмика","Построение сингла, развитие, динамика, ритмика и флоу."],["lyrics","Реализация стиля","Насколько убедительно и качественно воплощён выбранный стиль: бит, звук, исполнение и продакшн."],["originality","Индивидуальность / харизма","Самобытность артиста, узнаваемость, подача и эмоциональная убедительность."],["atmosphere","Атмосфера / вайб","Субъективное общее впечатление от релиза; этот балл задаёт множитель."]].map(([key,label,help])=>`<label class="field criterion"><span>${label.toUpperCase()} · 0–10</span><input id="${prefix}${key}" type="number" min="0" max="10" step="1" required><small>${help}</small></label>`).join("")}
 function calculateScore(c){return (c.sound+c.composition+c.lyrics+c.originality)*(1+c.atmosphere*0.125)}
 function readCriteria(prefix){return Object.fromEntries(["sound","composition","lyrics","originality","atmosphere"].map(k=>[k,Number($("#"+prefix+k).value)]))}
+const ratingDrafts=new Map();
 function rateModal(r){
-
+  const draft=ratingDrafts.get(String(r.id));
   modal(`<div class="rating-modal">
     <div class="rating-hero">
       <div class="rating-cover">${r.cover&&/^https:\/\//i.test(r.cover)?`<img src="${r.cover}" alt="">`:`<span>${String(r.art||r.artist||"♪").slice(0,1)}</span>`}</div>
@@ -281,7 +282,7 @@ function rateModal(r){
     <button class="lime rating-submit" id="rateGo">${Number(r.rated_by_me)?"Сохранить изменения":"Сохранить оценку"} <span>↗</span></button>
     ${Number(r.rated_by_me)&&!Number(r.reviewed_by_me)?`<button type="button" class="danger delete-rating-button" id="deleteMyRating">Удалить мою оценку</button>`:""}
   </div>`);
-  if(Number(r.rated_by_me)){for(const key of ["sound","composition","lyrics","originality","atmosphere"]){const field=$("#rate_"+key);if(field)field.value=r["my_"+key]??"";}}
+  for(const key of ["sound","composition","lyrics","originality","atmosphere"]){const field=$("#rate_"+key);if(field)field.value=draft?draft[key]??"":Number(r.rated_by_me)?r["my_"+key]??"":"";}
   const updatePreview=()=>{
     const keys=["sound","composition","lyrics","originality","atmosphere"];
     const values=keys.map(k=>$("#rate_"+k).value.trim());
@@ -290,10 +291,10 @@ function rateModal(r){
     $("#ratingScorePreview").textContent=score===null?"—":score.toFixed(0);
     $("#ratingScoreBar").style.width=(score===null?0:score/90*100)+"%";
   };
-  $$(".rating-modal .criterion input").forEach(input=>input.addEventListener("input",updatePreview));
+  $(".rating-modal .criterion input").forEach(input=>input.addEventListener("input",()=>{ratingDrafts.set(String(r.id),Object.fromEntries(["sound","composition","lyrics","originality","atmosphere"].map(key=>[key,$("#rate_"+key).value])));updatePreview();}));
   updatePreview();
-  $("#rateGo").onclick=async()=>{if(!token)return auth();const criteria=readCriteria("rate_");if(Object.values(criteria).some(v=>!Number.isInteger(v)||v<0||v>10)){toast("Заполни все критерии целыми числами от 0 до 10");return;}try{await api(`/releases/${r.id}/rating`,{method:Number(r.rated_by_me)?"PATCH":"POST",body:JSON.stringify(criteria)});await load();close();toast("Оценка сохранена")}catch(e){toast(e.message)}};
-  $("#deleteMyRating")?.addEventListener("click",async()=>{if(!confirm("Удалить свою оценку этого релиза?"))return;try{await api(`/releases/${r.id}/rating`,{method:"DELETE"});await load();close();toast("Оценка удалена")}catch(e){toast(e.message)}});
+  $("#rateGo").onclick=async()=>{if(!token)return auth();const criteria=readCriteria("rate_");if(Object.values(criteria).some(v=>!Number.isInteger(v)||v<0||v>10)){toast("Заполни все критерии целыми числами от 0 до 10");return;}try{await api(`/releases/${r.id}/rating`,{method:Number(r.rated_by_me)?"PATCH":"POST",body:JSON.stringify(criteria)});ratingDrafts.delete(String(r.id));await load();close();toast("Оценка сохранена")}catch(e){toast(e.message)}};
+  $("#deleteMyRating")?.addEventListener("click",async()=>{if(!confirm("Удалить свою оценку этого релиза?"))return;try{await api(`/releases/${r.id}/rating`,{method:"DELETE"});ratingDrafts.delete(String(r.id));await load();close();toast("Оценка удалена")}catch(e){toast(e.message)}});
 }
 function writeReview(){
   if(!token)return auth();
