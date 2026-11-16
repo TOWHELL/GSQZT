@@ -191,7 +191,17 @@ async function loadFollowing(){
   catch(e){box.textContent=e.message;}
 }
 function go(p){document.querySelectorAll(".page").forEach(x=>x.classList.toggle("active",x.id===p));document.querySelectorAll("nav button[data-page]").forEach(x=>x.classList.toggle("active",x.dataset.page===p));window.scrollTo(0,0)}
-function modal(s){$("#modalBody").innerHTML=s;$("#modal").classList.remove("hidden")}function close(){$("#modal").classList.add("hidden")}
+function modal(s){$("#modalBody").innerHTML=s;$("#modal").classList.remove("hidden")}
+function close(){
+  const ratingModal=$("#modalBody .rating-modal[data-rating-release]");
+  if(ratingModal){
+    const id=String(ratingModal.dataset.ratingRelease);
+    const fields=["sound","composition","lyrics","originality","atmosphere"];
+    const draft=Object.fromEntries(fields.map(key=>[key,$("#rate_"+key)?.value??""]));
+    if(fields.some(key=>draft[key]!==""))ratingDrafts.set(id,draft);
+  }
+  $("#modal").classList.add("hidden");
+}
 function auth(){modal(`<small>GSQZT COMMUNITY</small><h2>Вход / регистрация</h2><div id="authFields"><label class="field"><span>EMAIL ИЛИ НИК</span><input id="identity"></label><label class="field"><span>ПАРОЛЬ</span><input id="password" type="password"></label></div><button class="lime" id="authGo">Войти</button><p><button id="switch">Создать аккаунт</button></p>`);let reg=false;$("#switch").onclick=()=>{reg=!reg;$("#authFields").innerHTML=reg?'<label class="field"><span>НИК</span><input id="username"></label><label class="field"><span>EMAIL</span><input id="email"></label><label class="field"><span>ПАРОЛЬ (МИНИМУМ 8 СИМВОЛОВ)</span><input id="password" type="password"></label>':'<label class="field"><span>EMAIL ИЛИ НИК</span><input id="identity"></label><label class="field"><span>ПАРОЛЬ</span><input id="password" type="password"></label>';$("#authGo").textContent=reg?"Зарегистрироваться":"Войти"};$("#authGo").onclick=async()=>{try{let body=reg?{username:$("#username").value,email:$("#email").value,password:$("#password").value}:{identity:$("#identity").value,password:$("#password").value};let d=await api(reg?"/auth/register":"/auth/login",{method:"POST",body:JSON.stringify(body)});token=d.token;user=d.user;localStorage.setItem("gsqzt_token",token);await loadFavorites();close();draw();await loadNotifications();toast("Добро пожаловать, "+user.username)}catch(e){toast(e.message)}}}
 
 async function loadMySubmissions(){
@@ -268,7 +278,7 @@ function readCriteria(prefix){return Object.fromEntries(["sound","composition","
 const ratingDrafts=new Map();
 function rateModal(r){
   const draft=ratingDrafts.get(String(r.id));
-  modal(`<div class="rating-modal">
+  modal(`<div class="rating-modal" data-rating-release="${escapeHTML(r.id)}">
     <div class="rating-hero">
       <div class="rating-cover">${r.cover&&/^https:\/\//i.test(r.cover)?`<img src="${r.cover}" alt="">`:`<span>${String(r.art||r.artist||"♪").slice(0,1)}</span>`}</div>
       <div class="rating-track"><small>ОЦЕНКА РЕЛИЗА · ${String(r.type||"релиз").toUpperCase()}</small><h2>${escapeHTML(r.title)}</h2><p>${escapeHTML(r.artist)} · ${r.year}</p></div>
