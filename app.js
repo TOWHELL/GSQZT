@@ -72,9 +72,9 @@ function renderTop(){
   const box=$("#chart"),desc=$("#topDescription");
   if(!box)return;
   let rows=[],html="";
-  if(activeTop==="all"||activeTop==="albums"||activeTop==="singles"){
-    const label=activeTop==="albums"?"Альбомы":activeTop==="singles"?"Синглы":"Все релизы";
-    rows=releases.filter(r=>activeTop==="all"||(activeTop==="albums"?r.type==="Альбом":r.type==="Сингл")).sort((a,b)=>Number(b.score)-Number(a.score));
+  if(activeTop==="all"||activeTop==="albums"||activeTop==="singles"||activeTop==="eps"){
+    const label=activeTop==="albums"?"Альбомы":activeTop==="singles"?"Синглы":activeTop==="eps"?"EP":"Все релизы";
+    rows=releases.filter(r=>activeTop==="all"||(activeTop==="albums"?r.type==="Альбом":activeTop==="singles"?r.type==="Сингл":r.type==="EP")).sort((a,b)=>Number(b.score)-Number(a.score));
     desc.textContent=label+" — по средней оценке пользователей (из 90 баллов).";
     html=rows.map((r,i)=>`<div class="chartrow"><b>${String(i+1).padStart(2,"0")}</b>${cover(r)}<div><h3>${r.title}</h3><p>${r.artist} · ${r.type}</p>${listeningLink(r)}</div><span class="score">${Number(r.score).toFixed(0)}/90</span></div>`).join("");
   }else if(activeTop==="artists"){
