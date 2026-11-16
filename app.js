@@ -195,6 +195,7 @@ function modal(s){$("#modalBody").innerHTML=s;$("#modal").classList.remove("hidd
 function close(){
   const ratingModal=$("#modalBody .rating-modal[data-rating-release]");
   if(ratingModal)saveRatingDraft(ratingModal.dataset.ratingRelease);
+  if($("#modalBody .review-compose"))saveReviewDraft();
   $("#modal").classList.add("hidden");
 }
 function auth(){modal(`<small>GSQZT COMMUNITY</small><h2>Вход / регистрация</h2><div id="authFields"><label class="field"><span>EMAIL ИЛИ НИК</span><input id="identity"></label><label class="field"><span>ПАРОЛЬ</span><input id="password" type="password"></label></div><button class="lime" id="authGo">Войти</button><p><button id="switch">Создать аккаунт</button></p>`);let reg=false;$("#switch").onclick=()=>{reg=!reg;$("#authFields").innerHTML=reg?'<label class="field"><span>НИК</span><input id="username"></label><label class="field"><span>EMAIL</span><input id="email"></label><label class="field"><span>ПАРОЛЬ (МИНИМУМ 8 СИМВОЛОВ)</span><input id="password" type="password"></label>':'<label class="field"><span>EMAIL ИЛИ НИК</span><input id="identity"></label><label class="field"><span>ПАРОЛЬ</span><input id="password" type="password"></label>';$("#authGo").textContent=reg?"Зарегистрироваться":"Войти"};$("#authGo").onclick=async()=>{try{let body=reg?{username:$("#username").value,email:$("#email").value,password:$("#password").value}:{identity:$("#identity").value,password:$("#password").value};let d=await api(reg?"/auth/register":"/auth/login",{method:"POST",body:JSON.stringify(body)});token=d.token;user=d.user;localStorage.setItem("gsqzt_token",token);await loadFavorites();close();draw();await loadNotifications();toast("Добро пожаловать, "+user.username)}catch(e){toast(e.message)}}}
@@ -319,10 +320,18 @@ function rateModal(r){
   $("#rateGo").onclick=async()=>{if(!token)return auth();const criteria=readCriteria("rate_");if(Object.values(criteria).some(v=>!Number.isInteger(v)||v<0||v>10)){toast("Заполни все критерии целыми числами от 0 до 10");return;}try{await api(`/releases/${r.id}/rating`,{method:Number(r.rated_by_me)?"PATCH":"POST",body:JSON.stringify(criteria)});clearRatingDraft(r.id);await load();close();toast("Оценка сохранена")}catch(e){toast(e.message)}};
   $("#deleteMyRating")?.addEventListener("click",async()=>{if(!confirm("Удалить свою оценку этого релиза?"))return;try{await api(`/releases/${r.id}/rating`,{method:"DELETE"});clearRatingDraft(r.id);await load();close();toast("Оценка удалена")}catch(e){toast(e.message)}});
 }
+function saveReviewDraft(){
+  const fields=["rtitle","review_sound","review_composition","review_lyrics","review_originality","review_atmosphere","rpros","rcons","rbody"];
+  const draft={releaseId:$("#rid")?.value||"",values:Object.fromEntries(fields.map(id=>[id,$("#"+id)?.value??""]))};
+  try{localStorage.setItem("gsqzt_review_draft",JSON.stringify(draft));}catch(e){}
+}
+function clearReviewDraft(){try{localStorage.removeItem("gsqzt_review_draft");}catch(e){}}
 function writeReview(){
   if(!token)return auth();
   if(!releases.length){toast("Сначала добавь релиз на сайт");return;}
-  const first=releases[0];
+  let draft=null;
+  try{draft=JSON.parse(localStorage.getItem("gsqzt_review_draft")||"null");}catch(e){}
+  const first=releases.find(r=>String(r.id)===String(draft?.releaseId))||releases[0];
   const hero=r=>`<div class="rating-cover">${r.cover&&/^https:\/\//i.test(r.cover)?`<img src="${r.cover}" alt="">`:`<span>${String(r.art||r.artist||"♪").slice(0,1)}</span>`}</div><div class="rating-track"><small>НОВАЯ РЕЦЕНЗИЯ · ${String(r.type||"релиз").toUpperCase()}</small><h2>${r.title}</h2><p>${r.artist} · ${r.year}</p></div>`;
   modal(`<div class="rating-modal review-compose">
     <div class="rating-hero" id="reviewReleaseHero">${hero(first)}</div>
@@ -339,7 +348,10 @@ function writeReview(){
     <label class="field"><span>РЕЦЕНЗИЯ · ОТ 50 ДО 5000 СИМВОЛОВ</span><textarea id="rbody" maxlength="5000" placeholder="Расскажи о звучании, идеях и впечатлениях..."></textarea></label>
     <button class="lime rating-submit" id="publish">Опубликовать рецензию <span>↗</span></button>
   </div>`);
-  $("#rid").onchange=()=>{const r=releases.find(x=>Number(x.id)===Number($("#rid").value));if(r)$("#reviewReleaseHero").innerHTML=hero(r);};
+  $("#rid").value=String(first.id);
+  const draftFields=["rtitle","review_sound","review_composition","review_lyrics","review_originality","review_atmosphere","rpros","rcons","rbody"];
+  for(const id of draftFields){const field=$("#"+id);if(field&&draft?.values&&Object.prototype.hasOwnProperty.call(draft.values,id))field.value=draft.values[id];}
+  $("#rid").onchange=()=>{const r=releases.find(x=>Number(x.id)===Number($("#rid").value));if(r)$("#reviewReleaseHero").innerHTML=hero(r);saveReviewDraft();};
   const updateReviewPreview=()=>{
     const keys=["sound","composition","lyrics","originality","atmosphere"];
     const values=keys.map(k=>$("#review_"+k).value.trim());
@@ -348,14 +360,15 @@ function writeReview(){
     $("#reviewScorePreview").textContent=score===null?"—":score.toFixed(0);
     $("#reviewScoreBar").style.width=(score===null?0:score/90*100)+"%";
   };
-  $$(".review-compose .criterion input").forEach(input=>input.addEventListener("input",updateReviewPreview));
+  $$(".review-compose .criterion input").forEach(input=>{const refresh=()=>{updateReviewPreview();saveReviewDraft();};input.addEventListener("input",refresh);input.addEventListener("change",refresh);});
+  for(const id of ["rtitle","rpros","rcons","rbody"]){const field=$("#"+id);field?.addEventListener("input",saveReviewDraft);field?.addEventListener("change",saveReviewDraft);}
   updateReviewPreview();
   $("#publish").onclick=async()=>{try{
     const criteria=readCriteria("review_");
     if(Object.values(criteria).some(v=>!Number.isInteger(v)||v<0||v>10)){toast("Заполни все критерии целыми числами от 0 до 10");return;}
     if($("#rbody").value.trim().length<50){toast("Рецензия должна содержать минимум 50 символов");return;}
     await api("/reviews",{method:"POST",body:JSON.stringify({releaseId:Number($("#rid").value),title:$("#rtitle").value,pros:$("#rpros").value,cons:$("#rcons").value,body:$("#rbody").value,...criteria})});
-    await load();close();toast("Рецензия опубликована");
+    clearReviewDraft();await load();close();toast("Рецензия опубликована");
   }catch(e){toast(e.message)}};
 }
 document.addEventListener("submit",async e=>{
