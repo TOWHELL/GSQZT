@@ -439,12 +439,12 @@ export async function onRequest(context) {
 
     if (path === "/api/reviews" && method === "GET") {
       const reviews = await db.prepare(`
-        SELECT rv.id, rv.release_id, rv.username, u.avatar, rv.release_title AS release, rv.artist, rv.score, rv.title, rv.pros, rv.cons, rv.body, rv.created_at, rv.sound, rv.composition, rv.lyrics, rv.originality, rv.atmosphere,
+        SELECT rv.id, rv.release_id, rv.username, u.avatar, rv.release_title AS release, rv.artist, rel.type AS release_type, rv.score, rv.title, rv.pros, rv.cons, rv.body, rv.created_at, rv.sound, rv.composition, rv.lyrics, rv.originality, rv.atmosphere,
           (SELECT COUNT(*) FROM review_likes rl WHERE rl.review_id=rv.id) AS likes_count,
           (SELECT COUNT(*) FROM review_comments rc WHERE rc.review_id=rv.id) AS comments_count,
           CASE WHEN ? IS NOT NULL AND EXISTS(SELECT 1 FROM review_likes rl WHERE rl.review_id=rv.id AND rl.user_id=?) THEN 1 ELSE 0 END AS liked_by_me,
           CASE WHEN ? IS NOT NULL AND rv.user_id=? THEN 1 ELSE 0 END AS can_edit, CASE WHEN rv.id=(SELECT pinned_review_id FROM users WHERE id=rv.user_id) THEN 1 ELSE 0 END AS is_pinned
-        FROM reviews rv JOIN users u ON u.id=rv.user_id ORDER BY rv.created_at DESC
+        FROM reviews rv JOIN users u ON u.id=rv.user_id LEFT JOIN releases rel ON rel.id=rv.release_id ORDER BY rv.created_at DESC
       `).bind(user?.id || null,user?.id || null,user?.id || null,user?.id || null).all();
       return json({ reviews: reviews.results || [] });
     }
