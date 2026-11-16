@@ -194,12 +194,7 @@ function go(p){document.querySelectorAll(".page").forEach(x=>x.classList.toggle(
 function modal(s){$("#modalBody").innerHTML=s;$("#modal").classList.remove("hidden")}
 function close(){
   const ratingModal=$("#modalBody .rating-modal[data-rating-release]");
-  if(ratingModal){
-    const id=String(ratingModal.dataset.ratingRelease);
-    const fields=["sound","composition","lyrics","originality","atmosphere"];
-    const draft=Object.fromEntries(fields.map(key=>[key,$("#rate_"+key)?.value??""]));
-    if(fields.some(key=>draft[key]!==""))ratingDrafts.set(id,draft);
-  }
+  if(ratingModal)saveRatingDraft(ratingModal.dataset.ratingRelease);
   $("#modal").classList.add("hidden");
 }
 function auth(){modal(`<small>GSQZT COMMUNITY</small><h2>Вход / регистрация</h2><div id="authFields"><label class="field"><span>EMAIL ИЛИ НИК</span><input id="identity"></label><label class="field"><span>ПАРОЛЬ</span><input id="password" type="password"></label></div><button class="lime" id="authGo">Войти</button><p><button id="switch">Создать аккаунт</button></p>`);let reg=false;$("#switch").onclick=()=>{reg=!reg;$("#authFields").innerHTML=reg?'<label class="field"><span>НИК</span><input id="username"></label><label class="field"><span>EMAIL</span><input id="email"></label><label class="field"><span>ПАРОЛЬ (МИНИМУМ 8 СИМВОЛОВ)</span><input id="password" type="password"></label>':'<label class="field"><span>EMAIL ИЛИ НИК</span><input id="identity"></label><label class="field"><span>ПАРОЛЬ</span><input id="password" type="password"></label>';$("#authGo").textContent=reg?"Зарегистрироваться":"Войти"};$("#authGo").onclick=async()=>{try{let body=reg?{username:$("#username").value,email:$("#email").value,password:$("#password").value}:{identity:$("#identity").value,password:$("#password").value};let d=await api(reg?"/auth/register":"/auth/login",{method:"POST",body:JSON.stringify(body)});token=d.token;user=d.user;localStorage.setItem("gsqzt_token",token);await loadFavorites();close();draw();await loadNotifications();toast("Добро пожаловать, "+user.username)}catch(e){toast(e.message)}}}
@@ -276,8 +271,22 @@ function criteriaFields(prefix){return [["sound","Рифмы / образы","С
 function calculateScore(c){return (c.sound+c.composition+c.lyrics+c.originality)*(1+c.atmosphere*0.125)}
 function readCriteria(prefix){return Object.fromEntries(["sound","composition","lyrics","originality","atmosphere"].map(k=>[k,Number($("#"+prefix+k).value)]))}
 const ratingDrafts=new Map();
+function saveRatingDraft(id){
+  const fields=["sound","composition","lyrics","originality","atmosphere"];
+  const draft=Object.fromEntries(fields.map(key=>[key,$("#rate_"+key)?.value??""]));
+  if(fields.some(key=>draft[key]!=="")){
+    ratingDrafts.set(String(id),draft);
+    try{localStorage.setItem("gsqzt_rating_draft_"+String(id),JSON.stringify(draft));}catch(e){}
+  }
+}
+function clearRatingDraft(id){
+  ratingDrafts.delete(String(id));
+  try{localStorage.removeItem("gsqzt_rating_draft_"+String(id));}catch(e){}
+}
 function rateModal(r){
-  const draft=ratingDrafts.get(String(r.id));
+  let draft=ratingDrafts.get(String(r.id));
+  if(!draft){try{draft=JSON.parse(localStorage.getItem("gsqzt_rating_draft_"+String(r.id))||"null");}catch(e){draft=null;}}
+
   modal(`<div class="rating-modal" data-rating-release="${escapeHTML(r.id)}">
     <div class="rating-hero">
       <div class="rating-cover">${r.cover&&/^https:\/\//i.test(r.cover)?`<img src="${r.cover}" alt="">`:`<span>${String(r.art||r.artist||"♪").slice(0,1)}</span>`}</div>
@@ -301,10 +310,10 @@ function rateModal(r){
     $("#ratingScorePreview").textContent=score===null?"—":score.toFixed(0);
     $("#ratingScoreBar").style.width=(score===null?0:score/90*100)+"%";
   };
-  $(".rating-modal .criterion input").forEach(input=>input.addEventListener("input",()=>{ratingDrafts.set(String(r.id),Object.fromEntries(["sound","composition","lyrics","originality","atmosphere"].map(key=>[key,$("#rate_"+key).value])));updatePreview();}));
+  $(".rating-modal .criterion input").forEach(input=>input.addEventListener("input",()=>{saveRatingDraft(r.id);updatePreview();}));
   updatePreview();
-  $("#rateGo").onclick=async()=>{if(!token)return auth();const criteria=readCriteria("rate_");if(Object.values(criteria).some(v=>!Number.isInteger(v)||v<0||v>10)){toast("Заполни все критерии целыми числами от 0 до 10");return;}try{await api(`/releases/${r.id}/rating`,{method:Number(r.rated_by_me)?"PATCH":"POST",body:JSON.stringify(criteria)});ratingDrafts.delete(String(r.id));await load();close();toast("Оценка сохранена")}catch(e){toast(e.message)}};
-  $("#deleteMyRating")?.addEventListener("click",async()=>{if(!confirm("Удалить свою оценку этого релиза?"))return;try{await api(`/releases/${r.id}/rating`,{method:"DELETE"});ratingDrafts.delete(String(r.id));await load();close();toast("Оценка удалена")}catch(e){toast(e.message)}});
+  $("#rateGo").onclick=async()=>{if(!token)return auth();const criteria=readCriteria("rate_");if(Object.values(criteria).some(v=>!Number.isInteger(v)||v<0||v>10)){toast("Заполни все критерии целыми числами от 0 до 10");return;}try{await api(`/releases/${r.id}/rating`,{method:Number(r.rated_by_me)?"PATCH":"POST",body:JSON.stringify(criteria)});clearRatingDraft(r.id);await load();close();toast("Оценка сохранена")}catch(e){toast(e.message)}};
+  $("#deleteMyRating")?.addEventListener("click",async()=>{if(!confirm("Удалить свою оценку этого релиза?"))return;try{await api(`/releases/${r.id}/rating`,{method:"DELETE"});clearRatingDraft(r.id);await load();close();toast("Оценка удалена")}catch(e){toast(e.message)}});
 }
 function writeReview(){
   if(!token)return auth();
