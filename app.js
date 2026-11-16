@@ -90,9 +90,9 @@ function renderTop(){
         map.set(key,x);
       });
     });
-    rows=[...map.values()].map(x=>({...x,score:x.total/x.count})).sort((a,b)=>b.score-a.score||a.artist.localeCompare(b.artist,"ru"));
-    desc.textContent="Каждый исполнитель из совместного релиза учитывается отдельно; рейтинг считается по средним оценкам его релизов.";
-    html=rows.map((r,i)=>`<div class="leader-row"><b class="leader-place">${String(i+1).padStart(2,"0")}</b><div><h3>${r.artist}</h3><p>${r.count} релиз(а): ${r.releases.join(", ")}</p></div><span class="score">${r.score.toFixed(0)}/90</span></div>`).join("");
+    rows=[...map.values()].sort((a,b)=>b.count-a.count||a.artist.localeCompare(b.artist,"ru"));
+    desc.textContent="Топ артистов по количеству релизов. Каждый исполнитель из совместного релиза учитывается отдельно.";
+    html=rows.map((r,i)=>`<div class="leader-row"><b class="leader-place">${String(i+1).padStart(2,"0")}</b><div><h3>${escapeHTML(r.artist)}</h3><p>${r.count} ${r.count===1?"релиз":r.count>=2&&r.count<=4?"релиза":"релизов"}</p></div></div>`).join("");
   }else{
     const map=new Map();
     reviews.forEach(r=>{const key=r.username||"Аноним";const x=map.get(key)||{username:key,count:0,total:0};x.count++;x.total+=Number(r.score)||0;map.set(key,x)});
