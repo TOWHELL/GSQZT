@@ -381,3 +381,20 @@ header nav button[data-page].active{color:var(--acid)}
 header nav button[data-page].active::after{transform:scaleX(1)}
 @media(max-width:650px){header nav button[data-page]{padding:0 3px}header nav button[data-page]::after{height:2px}}
 @media(prefers-reduced-motion:reduce){header nav button[data-page]::after{transition:none}}
+
+
+/* Страница отдельного релиза */
+.release-detail-layout{display:grid;grid-template-columns:minmax(220px,360px) minmax(0,1fr);gap:34px;align-items:start;margin:24px 0 42px;padding:26px;background:var(--panel);border:1px solid var(--line);border-radius:16px}
+.release-detail-cover .cover{width:100%;aspect-ratio:1/1;border-radius:10px}
+.release-detail-main{min-width:0;padding:8px 0}
+.release-detail-main>small{color:var(--acid);font:10px "DM Mono",monospace;letter-spacing:.14em}
+.release-detail-main h1{margin:12px 0 5px;font-size:clamp(30px,5vw,54px);overflow-wrap:anywhere}
+.release-detail-artist{color:#c4c4c8;font-size:15px}
+.release-detail-score{display:flex;align-items:baseline;gap:9px;margin:22px 0}
+.release-detail-score strong{font:700 34px "DM Mono",monospace;color:var(--acid)}
+.release-detail-score span,.release-detail-genre{color:var(--muted);font-size:11px}
+.release-detail-actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:18px 0}
+.release-detail-genre{margin-top:24px}
+.release-detail-description{max-width:680px;color:#d0d0d3;font-size:13px;line-height:1.8;white-space:pre-wrap}
+#releaseDetail>h2{margin-top:38px}
+@media(max-width:700px){.release-detail-layout{grid-template-columns:1fr;gap:20px;padding:16px}.release-detail-cover{max-width:340px;margin:auto;width:100%}.release-detail-main{padding:0}.release-detail-main h1{font-size:34px}}
