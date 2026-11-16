@@ -92,7 +92,7 @@ function renderTop(){
     });
     rows=[...map.values()].map(x=>({...x,score:x.total/x.count})).sort((a,b)=>b.score-a.score||a.artist.localeCompare(b.artist,"ru"));
     desc.textContent="Артисты отсортированы по средней оценке их релизов. Каждый исполнитель из совместного релиза учитывается отдельно.";
-    html=rows.map((r,i)=>`<div class="leader-row"><b class="leader-place">${String(i+1).padStart(2,"0")}</b><div><h3>${escapeHTML(r.artist)}</h3><p>${r.count} ${r.count===1?"релиз":r.count>=2&&r.count<=4?"релиза":"релизов"}</p></div><span class="score">${r.score.toFixed(0)}<small>/90</small></span></div>`).join("");
+    html=rows.map((r,i)=>`<div class="leader-row"><b class="leader-place">${String(i+1).padStart(2,"0")}</b><div><h3>${escapeHTML(r.artist)}</h3><p>${r.count} ${r.count===1?"релиз":r.count>=2&&r.count<=4?"релиза":"релизов"}</p></div><span class="score">${r.score.toFixed(0)}/90</span></div>`).join("");
   }else{
     const map=new Map();
     reviews.forEach(r=>{const key=r.username||"Аноним";const x=map.get(key)||{username:key,count:0,total:0};x.count++;x.total+=Number(r.score)||0;map.set(key,x)});
