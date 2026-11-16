@@ -723,7 +723,7 @@ export async function onRequest(context) {
       }
       const criteria = ["sound","composition","lyrics","originality","atmosphere"].map(k => Number(body[k]));
       if (criteria.some(v => !Number.isInteger(v) || v < 0 || v > 10)) return json({ error: "Каждый критерий должен быть от 0 до 10" }, 400);
-      const score = (criteria[0]+criteria[1]+criteria[2]+criteria[3])*(1+criteria[4]*0.125);
+      const score = Math.round((criteria[0]+criteria[1]+criteria[2]+criteria[3])*(1+criteria[4]*0.125));
       const release = await db.prepare("SELECT id FROM releases WHERE id = ?").bind(releaseId).first();
       if (!release) return json({ error: "Релиз не найден" }, 404);
       const existingRating = await db.prepare("SELECT 1 AS found FROM ratings WHERE user_id=? AND release_id=?").bind(user.id,releaseId).first();
@@ -749,7 +749,7 @@ export async function onRequest(context) {
       if (reviewRow.release_id === null || reviewRow.release_id === undefined) return json({ error: "У этой рецензии нет связанного релиза" }, 400);
       const criteria = ["sound","composition","lyrics","originality","atmosphere"].map(k => Number(body[k]));
       if (criteria.some(v => !Number.isInteger(v) || v < 0 || v > 10)) return json({ error: "Каждый критерий должен быть от 0 до 10" }, 400);
-      const score = (criteria[0]+criteria[1]+criteria[2]+criteria[3])*(1+criteria[4]*0.125);
+      const score = Math.round((criteria[0]+criteria[1]+criteria[2]+criteria[3])*(1+criteria[4]*0.125));
       await db.batch([
         db.prepare("UPDATE reviews SET score=?,sound=?,composition=?,lyrics=?,originality=?,atmosphere=? WHERE id=? AND user_id=?").bind(score,...criteria,reviewId,user.id),
         db.prepare("UPDATE ratings SET score=?,sound=?,composition=?,lyrics=?,originality=?,atmosphere=? WHERE user_id=? AND release_id=?").bind(score,...criteria,user.id,reviewRow.release_id)
@@ -789,7 +789,7 @@ export async function onRequest(context) {
       if (!user) return json({ error: "Войдите, чтобы писать рецензии" }, 401);
       const releaseId = Number(body.releaseId);
       const criteria = ["sound","composition","lyrics","originality","atmosphere"].map(k => Number(body[k]));
-      const score = (criteria[0]+criteria[1]+criteria[2]+criteria[3])*(1+criteria[4]*0.125);
+      const score = Math.round((criteria[0]+criteria[1]+criteria[2]+criteria[3])*(1+criteria[4]*0.125));
       const title = String(body.title || "").trim().slice(0,100);
       const pros = String(body.pros || "").trim().slice(0,1000);
       const cons = String(body.cons || "").trim().slice(0,1000);
