@@ -398,3 +398,8 @@ header nav button[data-page].active::after{transform:scaleX(1)}
 .release-detail-description{max-width:680px;color:#d0d0d3;font-size:13px;line-height:1.8;white-space:pre-wrap}
 #releaseDetail>h2{margin-top:38px}
 @media(max-width:700px){.release-detail-layout{grid-template-columns:1fr;gap:20px;padding:16px}.release-detail-cover{max-width:340px;margin:auto;width:100%}.release-detail-main{padding:0}.release-detail-main h1{font-size:34px}}
+
+
+/* Кнопки редактирования и ответа в комментариях — справа */
+.comment-content .comment-edit,.comment-content .comment-reply{display:block;width:max-content;margin:7px 0 0 auto;padding:3px 0;border:0;background:none;color:var(--muted);font:700 10px Manrope,sans-serif;text-align:right;cursor:pointer}
+.comment-content .comment-edit:hover,.comment-content .comment-reply:hover{color:var(--acid)}
