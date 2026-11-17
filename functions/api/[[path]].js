@@ -429,7 +429,7 @@ export async function onRequest(context) {
       return json({ ok: true, id }, 201);
     }
 
-    const commentEditMatch = path.match(/^\\/api\\/reviews\\/([a-f0-9-]+)\\/comments\\/([a-f0-9-]+)$/i);
+    const commentEditMatch = path.match(/^\/api\/reviews\/([a-f0-9-]+)\/comments\/([a-f0-9-]+)$/i);
     if (commentEditMatch && method === "PATCH") {
       if (!user) return json({ error: "Войдите в аккаунт" }, 401);
       const bodyText = String(body.body || "").trim();
