@@ -401,8 +401,8 @@ export async function onRequest(context) {
     if (reviewCommentsMatch && method === "GET") {
       const reviewExists = await db.prepare("SELECT id FROM reviews WHERE id=?").bind(reviewCommentsMatch[1]).first();
       if (!reviewExists) return json({ error: "Рецензия не найдена" }, 404);
-      const rows = await db.prepare("SELECT c.id,c.parent_comment_id,c.username,c.body,c.created_at,u.avatar,CASE WHEN (? IS NOT NULL AND c.user_id=?) OR ?=1 THEN 1 ELSE 0 END AS can_delete,CASE WHEN ?=1 THEN 1 ELSE 0 END AS can_admin_delete FROM review_comments c JOIN users u ON u.id=c.user_id WHERE c.review_id=? ORDER BY c.created_at ASC")
-        .bind(user?.id || null,user?.id || null,isAdmin(user)?1:0,isAdmin(user)?1:0,reviewCommentsMatch[1]).all();
+      const rows = await db.prepare("SELECT c.id,c.parent_comment_id,c.username,c.body,c.created_at,u.avatar,CASE WHEN (? IS NOT NULL AND c.user_id=?) OR ?=1 THEN 1 ELSE 0 END AS can_delete,CASE WHEN ?=1 THEN 1 ELSE 0 END AS can_admin_delete,CASE WHEN ? IS NOT NULL AND c.user_id=? THEN 1 ELSE 0 END AS can_edit FROM review_comments c JOIN users u ON u.id=c.user_id WHERE c.review_id=? ORDER BY c.created_at ASC")
+        .bind(user?.id || null,user?.id || null,isAdmin(user)?1:0,isAdmin(user)?1:0,user?.id||null,user?.id||null,reviewCommentsMatch[1]).all();
       return json({ comments: rows.results || [] });
     }
     if (reviewCommentsMatch && method === "POST") {
@@ -427,6 +427,16 @@ export async function onRequest(context) {
         await db.prepare("INSERT INTO notifications (id,recipient_user_id,actor_user_id,actor_username,type,review_id,created_at) VALUES (?,?,?,?,?,?,?)").bind(crypto.randomUUID(),reviewOwner.user_id,user.id,user.username,"comment",reviewCommentsMatch[1],new Date().toISOString()).run();
       }
       return json({ ok: true, id }, 201);
+    }
+
+    const commentEditMatch = path.match(/^\\/api\\/reviews\\/([a-f0-9-]+)\\/comments\\/([a-f0-9-]+)$/i);
+    if (commentEditMatch && method === "PATCH") {
+      if (!user) return json({ error: "Войдите в аккаунт" }, 401);
+      const bodyText = String(body.body || "").trim();
+      if (!bodyText || bodyText.length > 1000) return json({ error: "Комментарий должен содержать от 1 до 1000 символов" }, 400);
+      const result = await db.prepare("UPDATE review_comments SET body=? WHERE id=? AND review_id=? AND user_id=?").bind(bodyText,commentEditMatch[2],commentEditMatch[1],user.id).run();
+      if (!result.meta || result.meta.changes === 0) return json({ error: "Комментарий не найден или у вас нет прав на изменение" }, 404);
+      return json({ ok: true });
     }
     const commentDeleteMatch = path.match(/^\/api\/reviews\/([a-f0-9-]+)\/comments\/([a-f0-9-]+)$/i);
     if (commentDeleteMatch && method === "DELETE") {
